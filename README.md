@@ -23,7 +23,7 @@
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/python-reddit-raffler.git
+   git clone https://github.com/F3de420/Cannacoin-Sub-Raffler.git
    cd python-reddit-raffler
    ```
 
@@ -53,7 +53,7 @@
 
 2. **Run the script:**
    ```bash
-   python reddit_raffler.py
+   python Cannanoin-Sub-Raffler.py
    ```
 
 3. **Input required information:**
