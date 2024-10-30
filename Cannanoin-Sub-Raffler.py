@@ -22,8 +22,8 @@ print("\n" + "-" * 50)
 
 # Reddit authentication using app credentials
 reddit = praw.Reddit(
-    client_id="[INSERT YOUR CLIENT ID]",
-    client_secret="[INSERT YOUR CLIENT SECRET]",
+    client_id="Hi_UFHf7hZ5PUwSB0qfRNg",
+    client_secret="tOgKu9cbY1TjMEzJbgn0mFyirZpnjw",
     user_agent="comment_raffle_script",
 )
 
@@ -68,15 +68,16 @@ if excluded_authors:
     print(", ".join(excluded_authors))
 
 print("\n" + "-" * 50)
-print(colored("Eligible commenters for the raffle:", COLORS["header"]))
+print("Eligible commenters for the raffle:")
 for i, author in enumerate(eligible_authors, start=1):
-    print(f"{i}. {author}")
+    print(colored(f"{i}. {author}", COLORS["success"]))
     time.sleep(0.25)  # Interval of 0.25 seconds between each name
 
 # Display suspense loader
-print("\n" + colored("Building suspense...", COLORS["header"]), end="")
+print("\n" + colored("Building suspense...", COLORS["warning"]), end="")
+# print("")
 for _ in range(5):
-    print(colored(".", COLORS["header"]), end="", flush=True)
+    print(colored(".", COLORS["warning"]), end="", flush=True)
     time.sleep(0.4)
 
 # Randomly select winners from eligible authors
@@ -88,10 +89,19 @@ else:
     winners = random.sample(eligible_authors, k=num_winners)
 
 # Display winners
-print("\n" + colored("AND THE WINNER(S) IS:", COLORS["header"]))
+print("")
+print("\n" + colored("AND THE WINNER(S) IS...", COLORS["header"]), end="")
+for _ in range(5):
+    print(colored(".", COLORS["header"]), end="", flush=True)
+    time.sleep(0.4)
+print("")
 print("-" * 50)
+time.sleep(0.5)
+print("")
 for winner in winners:
     print(colored(f"🎉 {winner} 🎉", COLORS["success"]))
 
+print("")
 print("\n" + colored("🎊 CONGRATULATIONS! 🎊", COLORS["warning"]))
+print("")
 print("-" * 50)
