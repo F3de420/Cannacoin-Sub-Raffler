@@ -1,0 +1,11 @@
+{
+    "config": {
+        "subreddits": ["MainSubreddit"],
+        "max_winners": 5,
+        "excluded_bots": ["AutoModerator", "timee_bot"],
+        "excluded_users": ["spammer_user"],
+        "raffle_count": 0
+    },
+    "processed_posts": [],
+    "last_processed_timestamp": 0
+}
