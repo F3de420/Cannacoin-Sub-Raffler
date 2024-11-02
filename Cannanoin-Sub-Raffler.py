@@ -1,32 +1,31 @@
 import os
 import re
 import json
-import time
 import requests
 from bot import login, is_moderator
 
-# Configurazione file e trigger
+# File and trigger configuration
 CONFIG_FILE = "bot_data.json"
 TRIGGER = r'!canna-raffler\s*(\d*)'
-RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")  # La chiave API di Random.org
+RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")  # API key as an environment variable
 
-# Carica dati persistenti
+# Load persistent data
 def load_data():
-    """Carica i dati persistenti da file JSON."""
+    """Loads persistent data from JSON file."""
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
-    return {"config": {"subreddits": ["NomeSubredditPrincipale"], "max_winners": 5, 
+    return {"config": {"subreddits": ["MainSubreddit"], "max_winners": 5, 
                        "excluded_bots": ["AutoModerator", "timee_bot"], "excluded_users": [], "raffle_count": 0},
             "processed_posts": [], "last_processed_timestamp": 0}
 
-# Salva i dati persistenti
+# Save persistent data
 def save_data(data):
-    """Salva i dati persistenti su file JSON."""
+    """Saves persistent data to JSON file."""
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# Inizializza i dati caricati
+# Initialize loaded data
 data = load_data()
 PROCESSED_POSTS = set(data["processed_posts"])
 SUBREDDITS = data["config"]["subreddits"]
@@ -34,11 +33,11 @@ EXCLUDED_BOTS = set(data["config"]["excluded_bots"])
 EXCLUDED_USERS = set(data["config"]["excluded_users"])
 MAX_WINNERS = data["config"]["max_winners"]
 
-# Inizializza Reddit
+# Initialize Reddit
 reddit = login()
 
 def monitor_subreddits():
-    """Monitora i subreddit e gestisce i raffle quando viene rilevato il trigger."""
+    """Monitors the subreddits and handles raffle when the trigger is detected."""
     for subreddit_name in SUBREDDITS:
         subreddit = reddit.subreddit(subreddit_name)
         for comment in subreddit.stream.comments(skip_existing=True):
@@ -54,7 +53,7 @@ def monitor_subreddits():
             save_data(data)
 
 def get_random_numbers(n, min_val, max_val):
-    """Ottieni `n` numeri casuali unici da Random.org tra min_val e max_val."""
+    """Fetches `n` unique random numbers from Random.org between min_val and max_val."""
     url = "https://api.random.org/json-rpc/2/invoke"
     headers = {"content-type": "application/json"}
     params = {
@@ -74,20 +73,20 @@ def get_random_numbers(n, min_val, max_val):
         result = response.json().get("result", {}).get("random", {}).get("data", [])
         return result
     else:
-        raise Exception("Errore nella richiesta a Random.org")
+        raise Exception("Error in Random.org request")
 
 def handle_raffle(trigger_comment, num_winners, subreddit_name):
-    """Gestisce il processo di raffle."""
+    """Handles the raffle process."""
     author_name = trigger_comment.author.name
     post_id = trigger_comment.submission.id
 
     if post_id in PROCESSED_POSTS:
-        print(f"Il bot ha giÃ  processato il post {post_id}. Operazione ignorata.")
+        print(f"The bot has already processed post {post_id}. Operation ignored.")
         return
 
     if not is_moderator(reddit, author_name, subreddit_name):
-        trigger_comment.reply("Questo bot Ã¨ attualmente riservato ai moderatori del subreddit.")
-        print(f"Utente {author_name} ha tentato di usare il bot senza permessi.")
+        trigger_comment.reply("This bot is currently reserved for subreddit moderators.")
+        print(f"User {author_name} attempted to use the bot without permissions.")
         return
 
     PROCESSED_POSTS.add(post_id)
@@ -107,26 +106,26 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
 
     participants_list = list(participants)
     if len(participants_list) < num_winners:
-        trigger_comment.reply(f"Non ci sono abbastanza partecipanti per selezionare {num_winners} vincitori.")
+        trigger_comment.reply(f"There are not enough participants to select {num_winners} winners.")
         return
 
-    # Usa Random.org per estrarre gli indici casuali dei vincitori
+    # Use Random.org to draw random indices of winners
     try:
         winner_indices = get_random_numbers(num_winners, 0, len(participants_list) - 1)
         winners = [participants_list[i] for i in winner_indices]
     except Exception as e:
-        print("Errore nell'estrazione con Random.org:", e)
-        trigger_comment.reply("C'Ã¨ stato un errore nell'estrazione dei vincitori.")
+        print("Error in Random.org draw:", e)
+        trigger_comment.reply("There was an error in selecting the winners.")
         return
 
     winners_text = '\n'.join(f"- {winner}" for winner in winners)
     data["config"]["raffle_count"] += 1
     save_data(data)
 
-    response_text = f"ðŸŽ‰ **Raffle completato!**\n\nEcco i vincitori:\n\n{winners_text}\n\nGrazie a tutti per la partecipazione!"
+    response_text = f"🎉 **Raffle completed!**\n\nHere are the winners:\n\n{winners_text}\n\nThanks to everyone for participating!"
     trigger_comment.reply(response_text)
-    print(f"Raffle completato nel thread {post.id}. Vincitori: {winners}")
+    print(f"Raffle completed in thread {post.id}. Winners: {winners}")
 
 if __name__ == "__main__":
-    print("Inizio monitoraggio subreddit...")
+    print("Starting subreddit monitoring...")
     monitor_subreddits()
