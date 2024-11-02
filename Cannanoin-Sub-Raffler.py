@@ -1,107 +1,132 @@
-import praw
-import random
+import os
+import re
+import json
 import time
+import requests
+from bot import login, is_moderator
 
-# Utility function for color coding
-def colored(text, color_code):
-    return f"\033[{color_code}m{text}\033[0m"
+# Configurazione file e trigger
+CONFIG_FILE = "bot_data.json"
+TRIGGER = r'!canna-raffler\s*(\d*)'
+RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")  # La chiave API di Random.org
 
-# Color codes
-COLORS = {
-    "header": "1;34",   # Blue
-    "info": "1;36",     # Cyan
-    "warning": "1;33",  # Yellow
-    "error": "1;31",    # Red
-    "success": "1;32",  # Green
-}
+# Carica dati persistenti
+def load_data():
+    """Carica i dati persistenti da file JSON."""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+    return {"config": {"subreddits": ["NomeSubredditPrincipale"], "max_winners": 5, 
+                       "excluded_bots": ["AutoModerator", "timee_bot"], "excluded_users": [], "raffle_count": 0},
+            "processed_posts": [], "last_processed_timestamp": 0}
 
-# Header
-print("\n" + "-" * 50)
-print("\n" + colored("Python Reddit Raffler", COLORS["header"]) + " by F3de420 for " + colored("Stellar CANNACOIN", COLORS["success"]))
-print("\n" + "-" * 50)
+# Salva i dati persistenti
+def save_data(data):
+    """Salva i dati persistenti su file JSON."""
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
-# Reddit authentication using app credentials
-reddit = praw.Reddit(
-    client_id="Hi_UFHf7hZ5PUwSB0qfRNg",
-    client_secret="tOgKu9cbY1TjMEzJbgn0mFyirZpnjw",
-    user_agent="comment_raffle_script",
-)
+# Inizializza i dati caricati
+data = load_data()
+PROCESSED_POSTS = set(data["processed_posts"])
+SUBREDDITS = data["config"]["subreddits"]
+EXCLUDED_BOTS = set(data["config"]["excluded_bots"])
+EXCLUDED_USERS = set(data["config"]["excluded_users"])
+MAX_WINNERS = data["config"]["max_winners"]
 
-# Prompt for the Reddit post ID and other inputs
-post_id = input(colored("Enter the Reddit post ID: ", COLORS["header"]))
-num_winners = int(input(colored("How many winners would you like to pick? ", COLORS["header"])))
-exclude_users_input = input(colored("Enter usernames to exclude, separated by a comma: ", COLORS["error"])).split(",")
+# Inizializza Reddit
+reddit = login()
 
-# Process exclusion list
-exclude_users = {user.strip().lower() for user in exclude_users_input if user.strip()}
+def monitor_subreddits():
+    """Monitora i subreddit e gestisce i raffle quando viene rilevato il trigger."""
+    for subreddit_name in SUBREDDITS:
+        subreddit = reddit.subreddit(subreddit_name)
+        for comment in subreddit.stream.comments(skip_existing=True):
+            if comment.created_utc <= data["last_processed_timestamp"]:
+                continue
+            
+            if match := re.search(TRIGGER, comment.body):
+                num_winners = int(match.group(1)) if match.group(1) else 1
+                num_winners = min(num_winners, MAX_WINNERS)
+                handle_raffle(comment, num_winners, subreddit_name)
+                
+            data["last_processed_timestamp"] = max(data["last_processed_timestamp"], comment.created_utc)
+            save_data(data)
 
-# Initialize sets for eligible and excluded users
-eligible_authors = set()
-excluded_authors = set()
-
-# Fetch comments from the submission
-submission = reddit.submission(id=post_id)
-submission.comments.replace_more(limit=None)
-
-# Process each comment
-for comment in submission.comments.list():
-    author_name = comment.author.name.lower()  # Normalize to lowercase
-
-    # Skip if author is in the exclusion list
-    if author_name in exclude_users:
-        excluded_authors.add(author_name)
+def get_random_numbers(n, min_val, max_val):
+    """Ottieni `n` numeri casuali unici da Random.org tra min_val e max_val."""
+    url = "https://api.random.org/json-rpc/2/invoke"
+    headers = {"content-type": "application/json"}
+    params = {
+        "jsonrpc": "2.0",
+        "method": "generateIntegers",
+        "params": {
+            "apiKey": RANDOM_ORG_API_KEY,
+            "n": n,
+            "min": min_val,
+            "max": max_val,
+            "replacement": False
+        },
+        "id": 42
+    }
+    response = requests.post(url, json=params, headers=headers)
+    if response.status_code == 200:
+        result = response.json().get("result", {}).get("random", {}).get("data", [])
+        return result
     else:
-        eligible_authors.add(author_name)  # Otherwise, add to eligible list
+        raise Exception("Errore nella richiesta a Random.org")
 
-# Remove any overlap between excluded and eligible authors
-eligible_authors -= excluded_authors
+def handle_raffle(trigger_comment, num_winners, subreddit_name):
+    """Gestisce il processo di raffle."""
+    author_name = trigger_comment.author.name
+    post_id = trigger_comment.submission.id
 
-# Check if there are eligible commenters left
-if not eligible_authors:
-    print(colored("No commenters are eligible after filtering and exclusions. Exiting the program.", COLORS["error"]))
-    exit()
+    if post_id in PROCESSED_POSTS:
+        print(f"Il bot ha giÃ  processato il post {post_id}. Operazione ignorata.")
+        return
 
-# Display excluded users and eligible users
-if excluded_authors:
-    print("\n" + "-" * 50)
-    print(colored("Users excluded from the raffle:", COLORS["error"]))
-    print(", ".join(excluded_authors))
+    if not is_moderator(reddit, author_name, subreddit_name):
+        trigger_comment.reply("Questo bot Ã¨ attualmente riservato ai moderatori del subreddit.")
+        print(f"Utente {author_name} ha tentato di usare il bot senza permessi.")
+        return
 
-print("\n" + "-" * 50)
-print("Eligible commenters for the raffle:")
-for i, author in enumerate(eligible_authors, start=1):
-    print(colored(f"{i}. {author}", COLORS["success"]))
-    time.sleep(0.25)  # Interval of 0.25 seconds between each name
+    PROCESSED_POSTS.add(post_id)
+    data["processed_posts"] = list(PROCESSED_POSTS)
+    save_data(data)
 
-# Display suspense loader
-print("\n" + colored("Building suspense...", COLORS["warning"]), end="")
-# print("")
-for _ in range(5):
-    print(colored(".", COLORS["warning"]), end="", flush=True)
-    time.sleep(0.4)
+    post = trigger_comment.submission
+    post.comments.replace_more(limit=None)
+    all_comments = post.comments.list()
 
-# Randomly select winners from eligible authors
-eligible_authors = list(eligible_authors)  # Convert to list for random sampling
-if num_winners > len(eligible_authors):
-    print(colored(f"\n\nWarning: Not enough commenters to select {num_winners} winners.", COLORS["error"]))
-    winners = random.sample(eligible_authors, len(eligible_authors))
-else:
-    winners = random.sample(eligible_authors, k=num_winners)
+    participants = set()
+    for comment in all_comments:
+        if comment.author and comment.author.name not in EXCLUDED_BOTS \
+                and comment.author.name != author_name \
+                and comment.author.name not in EXCLUDED_USERS:
+            participants.add(comment.author.name)
 
-# Display winners
-print("")
-print("\n" + colored("AND THE WINNER(S) IS...", COLORS["header"]), end="")
-for _ in range(5):
-    print(colored(".", COLORS["header"]), end="", flush=True)
-    time.sleep(0.4)
-print("")
-print("-" * 50)
-time.sleep(0.5)
-print("")
-for winner in winners:
-    print(colored(f"🎉 {winner} 🎉", COLORS["success"]))
+    participants_list = list(participants)
+    if len(participants_list) < num_winners:
+        trigger_comment.reply(f"Non ci sono abbastanza partecipanti per selezionare {num_winners} vincitori.")
+        return
 
-print("")
-print("\n" + colored("🎊 CONGRATULATIONS! 🎊", COLORS["warning"]))
-print("")
-print("-" * 50)
+    # Usa Random.org per estrarre gli indici casuali dei vincitori
+    try:
+        winner_indices = get_random_numbers(num_winners, 0, len(participants_list) - 1)
+        winners = [participants_list[i] for i in winner_indices]
+    except Exception as e:
+        print("Errore nell'estrazione con Random.org:", e)
+        trigger_comment.reply("C'Ã¨ stato un errore nell'estrazione dei vincitori.")
+        return
+
+    winners_text = '\n'.join(f"- {winner}" for winner in winners)
+    data["config"]["raffle_count"] += 1
+    save_data(data)
+
+    response_text = f"ðŸŽ‰ **Raffle completato!**\n\nEcco i vincitori:\n\n{winners_text}\n\nGrazie a tutti per la partecipazione!"
+    trigger_comment.reply(response_text)
+    print(f"Raffle completato nel thread {post.id}. Vincitori: {winners}")
+
+if __name__ == "__main__":
+    print("Inizio monitoraggio subreddit...")
+    monitor_subreddits()
