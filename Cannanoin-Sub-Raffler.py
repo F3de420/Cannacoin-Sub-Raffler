@@ -91,7 +91,7 @@ def get_random_numbers(n, min_val, max_val):
 
 def handle_raffle(trigger_comment, num_winners, subreddit_name):
     """Handles the raffle process."""
-    author_name = trigger_comment.author.name
+    author_name = trigger_comment.author.name  # Author of the trigger comment
     post_id = trigger_comment.submission.id
 
     if post_id in PROCESSED_POSTS:
@@ -113,6 +113,7 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
 
     participants = set()
     for comment in all_comments:
+        # Exclude comments by the bot, the trigger author, and excluded users
         if comment.author and comment.author.name not in EXCLUDED_BOTS \
                 and comment.author.name != author_name \
                 and comment.author.name not in EXCLUDED_USERS:
@@ -128,15 +129,19 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     winner_indices = get_random_numbers(num_winners, 0, len(participants_list) - 1)
     winners = [participants_list[i] for i in winner_indices]
     winners_text = '\n'.join(f"- u/{winner}" for winner in winners)
-    participants_text = '\n'.join(f"- u/{participant}" for participant in participants_list)
+    participants_text = '\n'.join(f"- {participant}" for participant in participants_list)
+
+    # Replace with the URL of the GIF you uploaded
+    gif_link = "https://imgur.com/YOUR_UPLOADED_GIF_LINK.gif"
 
     # Increment raffle count
     data["config"]["raffle_count"] += 1
     save_data(data)
 
-    # Detailed response with participants and winners
+    # Detailed response with GIF link, winners tagged, and participants not tagged
     response_text = (
         f"🎉 **Raffle completed!**\n\n"
+        f"![Celebration]({gif_link})\n\n"  # GIF link included
         f"**Qualified participants:**\n{participants_text}\n\n"
         f"**Winners:**\n{winners_text}\n\n"
         f"Thank you all for participating!"
