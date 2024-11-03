@@ -1,7 +1,15 @@
 import os
 import praw
+import logging
 
-# Configuration using environment variables
+# Logging configuration
+logging.basicConfig(
+    filename="bot.log",
+    filemode="a",
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
 USERAGENT = 'Bot for raffle management on subreddit'
 APP_ID = os.getenv("APP_ID")
 APP_SECRET = os.getenv("APP_SECRET")
@@ -10,7 +18,8 @@ REDDIT_USERNAME = os.getenv("REDDIT_USERNAME")
 REDDIT_PASSWORD = os.getenv("REDDIT_PASSWORD")
 
 def login():
-    """Logs into Reddit using refresh token authentication."""
+    """Logs into Reddit using environment variables."""
+    logging.info("Logging into Reddit...")
     return praw.Reddit(
         user_agent=USERAGENT,
         client_id=APP_ID,
