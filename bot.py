@@ -1,6 +1,5 @@
 import os
 import praw
-import logging
 
 USERAGENT = 'Bot for raffle management on subreddit'
 APP_ID = os.getenv("APP_ID")
@@ -11,7 +10,6 @@ REDDIT_PASSWORD = os.getenv("REDDIT_PASSWORD")
 
 def login():
     """Logs into Reddit using environment variables."""
-    logging.info("Logging into Reddit...")
     return praw.Reddit(
         user_agent=USERAGENT,
         client_id=APP_ID,
