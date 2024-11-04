@@ -35,6 +35,7 @@ def load_data():
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     else:
+        logging.warning("Configuration file missing. Using default data.")
         with open(CONFIG_FILE, "w") as f:
             json.dump(default_data, f, indent=4)
         return default_data
@@ -87,11 +88,12 @@ def get_random_numbers(n, min_val, max_val):
         },
         "id": 42
     }
-    response = requests.post(url, json=params, headers=headers)
-    if response.status_code == 200:
+    try:
+        response = requests.post(url, json=params, headers=headers)
+        response.raise_for_status()  # Raises an exception for HTTP errors
         return response.json().get("result", {}).get("random", {}).get("data", [])
-    else:
-        logging.error("Error in Random.org request. Using local random fallback.")
+    except Exception as e:
+        logging.exception("Error in Random.org request. Using local random fallback.")
         import random
         return random.sample(range(min_val, max_val + 1), n)
 
@@ -101,8 +103,10 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     post_author_name = trigger_comment.submission.author.name
     post_id = trigger_comment.submission.id
 
+    # Check if the raffle has already been completed for this post
     if post_id in PROCESSED_POSTS:
         logging.info(f"Post {post_id} already processed. Ignoring.")
+        trigger_comment.reply("A raffle has already been completed in this post.")
         return
 
     if not is_moderator(reddit, author_name, subreddit_name):
@@ -142,7 +146,7 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     data["config"]["raffle_count"] += 1
     save_data(data)
 
-    # Detailed response with GIF link, winners tagged, and participants not tagged
+    # Detailed response with winners tagged and participants not tagged
     response_text = (
         f"**Raffle completed!**\n\n"
         f"**Qualified participants:**\n{participants_text}\n\n"
