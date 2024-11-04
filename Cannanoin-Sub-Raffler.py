@@ -145,9 +145,9 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     # Detailed response with GIF link, winners tagged, and participants not tagged
     response_text = (
         f"🎉 **Raffle completed!**\n\n"
-        f"![Celebration]({gif_link})\n\n"  # GIF link included
         f"**Qualified participants:**\n{participants_text}\n\n"
         f"**Winners:**\n{winners_text}\n\n"
+        f"{gif_link}\n\n"
         f"Thank you all for participating!"
     )
     trigger_comment.reply(response_text)
