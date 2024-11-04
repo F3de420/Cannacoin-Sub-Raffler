@@ -58,6 +58,7 @@ def monitor_subreddits():
     for subreddit_name in SUBREDDITS:
         subreddit = reddit.subreddit(subreddit_name)
         logging.info(f"Monitoring subreddit: {subreddit_name}")
+        print(f"Monitoring subreddit: {subreddit_name}")
         for comment in subreddit.stream.comments(skip_existing=True):
             if comment.created_utc <= data["last_processed_timestamp"]:
                 continue
@@ -107,6 +108,7 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     if not is_moderator(reddit, author_name, subreddit_name):
         trigger_comment.reply("This bot is currently reserved for subreddit moderators.")
         logging.warning(f"User {author_name} attempted unauthorized bot usage.")
+        print(f"User {author_name} attempted unauthorized bot usage.")
         return
 
     PROCESSED_POSTS.add(post_id)
@@ -126,6 +128,7 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     if len(participants) < num_winners:
         trigger_comment.reply(f"Not enough participants to select {num_winners} winners.")
         logging.info("Not enough participants for the raffle.")
+        print("Not enough participants for the raffle.")
         return
 
     # Draw winners
@@ -149,7 +152,9 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     trigger_comment.reply(response_text)
     logging.info(f"Raffle completed in thread {post_id}. Winners: {winners}")
     print(f"Raffle completed in thread {post_id}. Winners: {winners}")
+    print(f"Starting subreddit monitoring...")
 
 if __name__ == "__main__":
     logging.info("Starting subreddit monitoring...")
+    print(f"Starting subreddit monitoring...")
     monitor_subreddits()
