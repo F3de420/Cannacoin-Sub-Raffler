@@ -135,19 +135,15 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     winners_text = '\n'.join(f"- u/{winner}" for winner in winners)
     participants_text = '\n'.join(f"- {participant}" for participant in participants_list)
 
-    # Link to the uploaded GIF
-    gif_link = "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExeXE4NHI5ZjdxZDR4M2ZsaGR4aDBka3hqcWZ1aTIzczh2aDZvZGJ0ciZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/6Y4v6DEjXF490hSv6W/giphy.gif"
-
     # Increment raffle count
     data["config"]["raffle_count"] += 1
     save_data(data)
 
     # Detailed response with GIF link, winners tagged, and participants not tagged
     response_text = (
-        f"🎉 **Raffle completed!**\n\n"
+        f"**Raffle completed!**\n\n"
         f"**Qualified participants:**\n{participants_text}\n\n"
         f"**Winners:**\n{winners_text}\n\n"
-        f"{gif_link}\n\n"
         f"Thank you all for participating!"
     )
     trigger_comment.reply(response_text)
