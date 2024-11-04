@@ -56,10 +56,16 @@ reddit = login()
 
 def monitor_subreddits():
     """Monitors subreddits and handles raffles when trigger is detected."""
+    logging.info("Starting subreddit monitoring...")
+    print("Starting subreddit monitoring...")
+    
+    # List all subreddits being monitored at the start
+    for subreddit_name in SUBREDDITS:
+        print(f"Monitoring subreddit: {subreddit_name}")
+
     for subreddit_name in SUBREDDITS:
         subreddit = reddit.subreddit(subreddit_name)
         logging.info(f"Monitoring subreddit: {subreddit_name}")
-        print(f"Monitoring subreddit: {subreddit_name}")
         for comment in subreddit.stream.comments(skip_existing=True):
             if comment.created_utc <= data["last_processed_timestamp"]:
                 continue
@@ -163,7 +169,6 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
         f"**Qualified participants:**\n{participants_text}\n\n"
         f"**Winners:**\n{winners_text}\n\n"
         f"Thank you all for participating!\n\n"
-        f""
         f"{signature}"
     )
     trigger_comment.reply(response_text)
