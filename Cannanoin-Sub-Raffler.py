@@ -2,30 +2,49 @@ import os
 import re
 import json
 import requests
+import logging
 from bot import login, is_moderator
 
-# File and trigger configuration
-CONFIG_FILE = "bot_data.json"
-TRIGGER = r'!canna-raffler\s*(\d*)'
-RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")  # API key as an environment variable
+# Logging configuration
+logging.basicConfig(
+    filename="bot.log",
+    filemode="a",
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-# Load persistent data
+CONFIG_FILE = "bot_config.json"
+TRIGGER = r'!canna-raffler\s*(\d*)'
+RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")
+
 def load_data():
-    """Loads persistent data from JSON file."""
+    """Loads data from the JSON file, creating defaults if file is missing."""
+    default_data = {
+        "config": {
+            "subreddits": ["MainSubreddit"],
+            "max_winners": 5,
+            "excluded_bots": ["AutoModerator", "timee_bot"],
+            "excluded_users": [],
+            "raffle_count": 0
+        },
+        "processed_posts": [],
+        "last_processed_timestamp": 0
+    }
+
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
-    return {"config": {"subreddits": ["MainSubreddit"], "max_winners": 5, 
-                       "excluded_bots": ["AutoModerator", "timee_bot"], "excluded_users": [], "raffle_count": 0},
-            "processed_posts": [], "last_processed_timestamp": 0}
+    else:
+        logging.warning("Configuration file missing. Using default data.")
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(default_data, f, indent=4)
+        return default_data
 
-# Save persistent data
 def save_data(data):
-    """Saves persistent data to JSON file."""
+    """Saves data to JSON file."""
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# Initialize loaded data
 data = load_data()
 PROCESSED_POSTS = set(data["processed_posts"])
 SUBREDDITS = data["config"]["subreddits"]
@@ -33,13 +52,14 @@ EXCLUDED_BOTS = set(data["config"]["excluded_bots"])
 EXCLUDED_USERS = set(data["config"]["excluded_users"])
 MAX_WINNERS = data["config"]["max_winners"]
 
-# Initialize Reddit
 reddit = login()
 
 def monitor_subreddits():
-    """Monitors the subreddits and handles raffle when the trigger is detected."""
+    """Monitors subreddits and handles raffles when trigger is detected."""
     for subreddit_name in SUBREDDITS:
         subreddit = reddit.subreddit(subreddit_name)
+        logging.info(f"Monitoring subreddit: {subreddit_name}")
+        print(f"Monitoring subreddit: {subreddit_name}")
         for comment in subreddit.stream.comments(skip_existing=True):
             if comment.created_utc <= data["last_processed_timestamp"]:
                 continue
@@ -53,7 +73,7 @@ def monitor_subreddits():
             save_data(data)
 
 def get_random_numbers(n, min_val, max_val):
-    """Fetches `n` unique random numbers from Random.org between min_val and max_val."""
+    """Fetches unique random numbers from Random.org, with fallback."""
     url = "https://api.random.org/json-rpc/2/invoke"
     headers = {"content-type": "application/json"}
     params = {
@@ -68,25 +88,31 @@ def get_random_numbers(n, min_val, max_val):
         },
         "id": 42
     }
-    response = requests.post(url, json=params, headers=headers)
-    if response.status_code == 200:
-        result = response.json().get("result", {}).get("random", {}).get("data", [])
-        return result
-    else:
-        raise Exception("Error in Random.org request")
+    try:
+        response = requests.post(url, json=params, headers=headers)
+        response.raise_for_status()  # Raises an exception for HTTP errors
+        return response.json().get("result", {}).get("random", {}).get("data", [])
+    except Exception as e:
+        logging.exception("Error in Random.org request. Using local random fallback.")
+        import random
+        return random.sample(range(min_val, max_val + 1), n)
 
 def handle_raffle(trigger_comment, num_winners, subreddit_name):
-    """Handles the raffle process."""
+    """Handles the raffle process, excluding post and trigger authors."""
     author_name = trigger_comment.author.name
+    post_author_name = trigger_comment.submission.author.name
     post_id = trigger_comment.submission.id
 
+    # Check if the raffle has already been completed for this post
     if post_id in PROCESSED_POSTS:
-        print(f"The bot has already processed post {post_id}. Operation ignored.")
+        logging.info(f"Post {post_id} already processed. Ignoring.")
+        trigger_comment.reply("A raffle has already been completed in this post.")
         return
 
     if not is_moderator(reddit, author_name, subreddit_name):
         trigger_comment.reply("This bot is currently reserved for subreddit moderators.")
-        print(f"User {author_name} attempted to use the bot without permissions.")
+        logging.warning(f"User {author_name} attempted unauthorized bot usage.")
+        print(f"User {author_name} attempted unauthorized bot usage.")
         return
 
     PROCESSED_POSTS.add(post_id)
@@ -95,37 +121,44 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
 
     post = trigger_comment.submission
     post.comments.replace_more(limit=None)
-    all_comments = post.comments.list()
+    participants = {
+        c.author.name for c in post.comments.list()
+        if c.author and c.author.name not in EXCLUDED_BOTS
+        and c.author.name != author_name
+        and c.author.name != post_author_name
+        and c.author.name not in EXCLUDED_USERS
+    }
 
-    participants = set()
-    for comment in all_comments:
-        if comment.author and comment.author.name not in EXCLUDED_BOTS \
-                and comment.author.name != author_name \
-                and comment.author.name not in EXCLUDED_USERS:
-            participants.add(comment.author.name)
+    if len(participants) < num_winners:
+        trigger_comment.reply(f"Not enough participants to select {num_winners} winners.")
+        logging.info("Not enough participants for the raffle.")
+        print("Not enough participants for the raffle.")
+        return
 
+    # Draw winners
+    winner_indices = get_random_numbers(num_winners, 0, len(participants) - 1)
     participants_list = list(participants)
-    if len(participants_list) < num_winners:
-        trigger_comment.reply(f"There are not enough participants to select {num_winners} winners.")
-        return
+    winners = [participants_list[i] for i in winner_indices]
+    winners_text = '\n'.join(f"- u/{winner}" for winner in winners)
+    participants_text = '\n'.join(f"- {participant}" for participant in participants_list)
 
-    # Use Random.org to draw random indices of winners
-    try:
-        winner_indices = get_random_numbers(num_winners, 0, len(participants_list) - 1)
-        winners = [participants_list[i] for i in winner_indices]
-    except Exception as e:
-        print("Error in Random.org draw:", e)
-        trigger_comment.reply("There was an error in selecting the winners.")
-        return
-
-    winners_text = '\n'.join(f"- {winner}" for winner in winners)
+    # Increment raffle count
     data["config"]["raffle_count"] += 1
     save_data(data)
 
-    response_text = f"🎉 **Raffle completed!**\n\nHere are the winners:\n\n{winners_text}\n\nThanks to everyone for participating!"
+    # Detailed response with winners tagged and participants not tagged
+    response_text = (
+        f"**Raffle completed!**\n\n"
+        f"**Qualified participants:**\n{participants_text}\n\n"
+        f"**Winners:**\n{winners_text}\n\n"
+        f"Thank you all for participating!"
+    )
     trigger_comment.reply(response_text)
-    print(f"Raffle completed in thread {post.id}. Winners: {winners}")
+    logging.info(f"Raffle completed in thread {post_id}. Winners: {winners}")
+    print(f"Raffle completed in thread {post_id}. Winners: {winners}")
+    print(f"Starting subreddit monitoring...")
 
 if __name__ == "__main__":
-    print("Starting subreddit monitoring...")
+    logging.info("Starting subreddit monitoring...")
+    print(f"Starting subreddit monitoring...")
     monitor_subreddits()
