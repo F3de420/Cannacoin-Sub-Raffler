@@ -4,6 +4,7 @@ import json
 import requests
 import logging
 from bot import login, is_moderator
+import concurrent.futures
 
 # Logging configuration
 logging.basicConfig(
@@ -54,29 +55,35 @@ MAX_WINNERS = data["config"]["max_winners"]
 
 reddit = login()
 
+def monitor_subreddit(subreddit_name):
+    """Monitors a single subreddit for comments that trigger the raffle."""
+    subreddit = reddit.subreddit(subreddit_name)
+    logging.info(f"Monitoring subreddit: {subreddit_name}")
+    print(f"Monitoring subreddit: {subreddit_name}")
+    for comment in subreddit.stream.comments(skip_existing=True):
+        if comment.created_utc <= data["last_processed_timestamp"]:
+            continue
+        
+        if match := re.search(TRIGGER, comment.body):
+            num_winners = int(match.group(1)) if match.group(1) else 1
+            num_winners = min(num_winners, MAX_WINNERS)
+            handle_raffle(comment, num_winners, subreddit_name)
+            
+        data["last_processed_timestamp"] = max(data["last_processed_timestamp"], comment.created_utc)
+        save_data(data)
+
 def monitor_subreddits():
-    """Monitors subreddits and handles raffles when trigger is detected."""
-    logging.info("Starting subreddit monitoring...")
+    """Starts a thread for each subreddit to monitor them concurrently."""
     print("Starting subreddit monitoring...")
-    
+    logging.info("Starting subreddit monitoring...")
+
     # List all subreddits being monitored at the start
     for subreddit_name in SUBREDDITS:
         print(f"Monitoring subreddit: {subreddit_name}")
 
-    for subreddit_name in SUBREDDITS:
-        subreddit = reddit.subreddit(subreddit_name)
-        logging.info(f"Monitoring subreddit: {subreddit_name}")
-        for comment in subreddit.stream.comments(skip_existing=True):
-            if comment.created_utc <= data["last_processed_timestamp"]:
-                continue
-            
-            if match := re.search(TRIGGER, comment.body):
-                num_winners = int(match.group(1)) if match.group(1) else 1
-                num_winners = min(num_winners, MAX_WINNERS)
-                handle_raffle(comment, num_winners, subreddit_name)
-                
-            data["last_processed_timestamp"] = max(data["last_processed_timestamp"], comment.created_utc)
-            save_data(data)
+    # Use ThreadPoolExecutor to monitor each subreddit concurrently
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        executor.map(monitor_subreddit, SUBREDDITS)
 
 def get_random_numbers(n, min_val, max_val):
     """Fetches unique random numbers from Random.org, with fallback."""
