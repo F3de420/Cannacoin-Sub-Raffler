@@ -162,7 +162,8 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
         f"**Raffle completed!**\n\n"
         f"**Qualified participants:**\n{participants_text}\n\n"
         f"**Winners:**\n{winners_text}\n\n"
-        f"Thank you all for participating!"
+        f"Thank you all for participating!\n\n"
+        f""
         f"{signature}"
     )
     trigger_comment.reply(response_text)
