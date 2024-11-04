@@ -146,12 +146,24 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     data["config"]["raffle_count"] += 1
     save_data(data)
 
-    # Detailed response with winners tagged and participants not tagged
+    # Signature with useful links
+    signature = (
+        "\n\n---\n\n"
+        "[Cannacoin Raffler](https://github.com/F3de420/Cannacoin-Sub-Raffler) | "
+        "[r/StellarCannacoin](https://www.reddit.com/r/StellarCannaCoin/) | "
+        "[r/StellarShroomz](https://www.reddit.com/r/StellarShroomz) | "
+        "[StashApp](https://stashapp.cloud/) | "
+        "[Cannacoin Discord](https://discord.gg/Xrpxm34QgW) | "
+        "[Shroomz Discord](https://discord.gg/PXkKFKwZVA)"
+    )
+
+    # Detailed response with winners tagged, participants, and signature
     response_text = (
         f"**Raffle completed!**\n\n"
         f"**Qualified participants:**\n{participants_text}\n\n"
         f"**Winners:**\n{winners_text}\n\n"
         f"Thank you all for participating!"
+        f"{signature}"
     )
     trigger_comment.reply(response_text)
     logging.info(f"Raffle completed in thread {post_id}. Winners: {winners}")
