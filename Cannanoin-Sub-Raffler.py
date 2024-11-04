@@ -115,11 +115,13 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
 
     post = trigger_comment.submission
     post.comments.replace_more(limit=None)
-    participants = {c.author.name for c in post.comments.list() if c.author and
-                    c.author.name not in EXCLUDED_BOTS and
-                    c.author.name != author_name and
-                    c.author.name != post_author_name and
-                    c.author.name not in EXCLUDED_USERS}
+    participants = {
+        c.author.name for c in post.comments.list()
+        if c.author and c.author.name not in EXCLUDED_BOTS
+        and c.author.name != author_name
+        and c.author.name != post_author_name
+        and c.author.name not in EXCLUDED_USERS
+    }
 
     if len(participants) < num_winners:
         trigger_comment.reply(f"Not enough participants to select {num_winners} winners.")
@@ -134,7 +136,7 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     participants_text = '\n'.join(f"- {participant}" for participant in participants_list)
 
     # Link to the uploaded GIF
-    gif_link = "INSERT GIF LINK"
+    gif_link = "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExeXE4NHI5ZjdxZDR4M2ZsaGR4aDBka3hqcWZ1aTIzczh2aDZvZGJ0ciZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/6Y4v6DEjXF490hSv6W/giphy.gif"
 
     # Increment raffle count
     data["config"]["raffle_count"] += 1
@@ -143,9 +145,9 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     # Detailed response with GIF link, winners tagged, and participants not tagged
     response_text = (
         f"🎉 **Raffle completed!**\n\n"
+        f"![Celebration]({gif_link})\n\n"  # GIF link included
         f"**Qualified participants:**\n{participants_text}\n\n"
         f"**Winners:**\n{winners_text}\n\n"
-        f"![Celebration]({gif_link})\n\n"  # GIF link included
         f"Thank you all for participating!"
     )
     trigger_comment.reply(response_text)
