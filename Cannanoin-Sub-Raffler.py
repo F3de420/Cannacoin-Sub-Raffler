@@ -52,6 +52,7 @@ PROCESSED_POSTS = set(data["processed_posts"])
 SUBREDDITS = data["config"]["subreddits"]
 EXCLUDED_BOTS = set(data["config"]["excluded_bots"])
 EXCLUDED_USERS = set(data["config"]["excluded_users"])
+WHITELISTED_USERS = set(data["config"]["whitelisted_users"])
 MAX_WINNERS = data["config"]["max_winners"]
 
 reddit = login()
