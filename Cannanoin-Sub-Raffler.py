@@ -26,6 +26,7 @@ def load_data():
             "max_winners": 5,
             "excluded_bots": ["AutoModerator", "timee_bot"],
             "excluded_users": [],
+            "whitelisted_users": [],
             "raffle_count": 0
         },
         "processed_posts": [],
@@ -122,8 +123,9 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
         trigger_comment.reply("A raffle has already been completed in this post.")
         return
 
-    if not is_moderator(reddit, author_name, subreddit_name):
-        trigger_comment.reply("This bot is currently reserved for subreddit moderators.")
+    # Verifica se l'utente è un moderatore o è presente nella whitelist
+    if not (is_moderator(reddit, author_name, subreddit_name) or author_name in data["config"]["whitelisted_users"]):
+        trigger_comment.reply("This bot is currently reserved for subreddit moderators and approved users.")
         logging.warning(f"User {author_name} attempted unauthorized bot usage.")
         print(f"User {author_name} attempted unauthorized bot usage.")
         return
