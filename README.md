@@ -13,6 +13,8 @@ This is a Reddit raffle bot developed for the **Stellar CANNACOIN** subreddit. I
 - Automatically monitoring specified subreddits for raffle triggers.
 - Uses the [Random.org API](https://random.org) for drawing unique random numbers.
 - Excludes specified users and bots from raffles.
+- Excludes post and trigger author
+- Lists the qualified users
 - Notifies winner
 
 ---
