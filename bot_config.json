@@ -1,11 +1,29 @@
 {
     "config": {
-        "subreddits": ["MainSubreddit"],
-        "max_winners": 5,
-        "excluded_bots": ["AutoModerator", "timee_bot"],
-        "excluded_users": ["insert spammer user"],
-        "raffle_count": 0
+        "subreddits": [
+            "subreddit 1",
+            "subreddit 2",
+        ],
+        "max_winners": 10,
+        "excluded_bots": [
+            "AutoModerator",
+            "timee_bot",
+            "bot 3",
+        ],
+        "excluded_users": [
+            ""
+        ],
+        "whitelisted_users": [
+            "trusted_user1",
+            "trusted_user2"
+        ],
+        "raffle_count": 4
     },
-    "processed_posts": [],
-    "last_processed_timestamp": 0
+    "processed_posts": [
+        "1gj9wp9",
+        "1gjh1e2",
+        "1gk75kx",
+        "1gjnz5m"
+    ],
+    "last_processed_timestamp": 1730845281.0
 }
