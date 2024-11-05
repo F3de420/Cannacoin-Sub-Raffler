@@ -162,12 +162,7 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     # Signature with useful links
     signature = (
         "\n\n---\n\n"
-        "[Cannacoin Raffler](https://github.com/F3de420/Cannacoin-Sub-Raffler) | "
-        "[r/StellarCannacoin](https://www.reddit.com/r/StellarCannaCoin/) | "
-        "[r/StellarShroomz](https://www.reddit.com/r/StellarShroomz) | "
-        "[StashApp](https://stashapp.cloud/) | "
-        "[Cannacoin Discord](https://discord.gg/Xrpxm34QgW) | "
-        "[Shroomz Discord](https://discord.gg/PXkKFKwZVA)"
+       "[Cannacoin Raffler](https://github.com/F3de420/Cannacoin-Sub-Raffler) | [r/StellarCannacoin](https://www.reddit.com/r/StellarCannaCoin/) | [r/StellarShroomz](https://www.reddit.com/r/StellarShroomz) | [StashApp](https://stashapp.cloud/) | [Cannacoin Discord](https://discord.gg/Xrpxm34QgW) | [Shroomz Discord](https://discord.gg/PXkKFKwZVA)"
     )
 
     # Detailed response with winners tagged, participants, and signature
