@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 
 CONFIG_FILE = "bot_config.json"
-TRIGGER = r'!canna-raffler\s*(\d*)'
+TRIGGER = r'!raffle\s*(\d*)'
 RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")
 
 def load_data():
@@ -26,7 +26,7 @@ def load_data():
             "max_winners": 5,
             "excluded_bots": ["AutoModerator", "timee_bot"],
             "excluded_users": [],
-            "whitelisted_users": [],
+            "whitelisted_users": [],  # Added whitelist field
             "raffle_count": 0
         },
         "processed_posts": [],
@@ -124,8 +124,8 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
         trigger_comment.reply("A raffle has already been completed in this post.")
         return
 
-    # Verifica se l'utente è un moderatore o è presente nella whitelist
-    if not (is_moderator(reddit, author_name, subreddit_name) or author_name in data["config"]["whitelisted_users"]):
+    # Check if the user is either a moderator or in the whitelist
+    if not (is_moderator(reddit, author_name, subreddit_name) or author_name in WHITELISTED_USERS):
         trigger_comment.reply("This bot is currently reserved for subreddit moderators and approved users.")
         logging.warning(f"User {author_name} attempted unauthorized bot usage.")
         print(f"User {author_name} attempted unauthorized bot usage.")
@@ -165,7 +165,12 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     # Signature with useful links
     signature = (
         "\n\n---\n\n"
-       "[Cannacoin Raffler](https://github.com/F3de420/Cannacoin-Sub-Raffler) | [r/StellarCannacoin](https://www.reddit.com/r/StellarCannaCoin/) | [r/StellarShroomz](https://www.reddit.com/r/StellarShroomz) | [StashApp](https://stashapp.cloud/) | [Cannacoin Discord](https://discord.gg/Xrpxm34QgW) | [Shroomz Discord](https://discord.gg/PXkKFKwZVA)"
+        "[Cannacoin Raffler](https://github.com/F3de420/Cannacoin-Sub-Raffler) | "
+        "[r/StellarCannacoin](https://www.reddit.com/r/StellarCannaCoin/) | "
+        "[r/StellarShroomz](https://www.reddit.com/r/StellarShroomz) | "
+        "[StashApp](https://stashapp.cloud/) | "
+        "[Cannacoin Discord](https://discord.gg/Xrpxm34QgW) | "
+        "[Shroomz Discord](https://discord.gg/PXkKFKwZVA)"
     )
 
     # Detailed response with winners tagged, participants, and signature
