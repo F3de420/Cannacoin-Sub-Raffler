@@ -6,7 +6,7 @@
 
 ### Overview
 
-The **Cannacoin-Sub-Raffler** bot developed for the **[Stellar CANNACOIN subreddit](https://www.reddit.com/r/StellarCannaCoin/) ** is a specialized Reddit bot developed to facilitate and manage raffle events within selected subreddits. By monitoring comments and processing user-triggered commands, this bot provides an automated solution for drawing random winners in a fair, efficient, and customizable way.
+The **Cannacoin-Sub-Raffler** bot developed for the **[Stellar CANNACOIN subreddit](https://www.reddit.com/r/StellarCannaCoin/)** is a specialized Reddit bot developed to facilitate and manage raffle events within selected subreddits. By monitoring comments and processing user-triggered commands, this bot provides an automated solution for drawing random winners in a fair, efficient, and customizable way.
 
 ### Key Features
 
