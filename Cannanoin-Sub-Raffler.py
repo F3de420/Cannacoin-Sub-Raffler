@@ -18,7 +18,6 @@ logging.basicConfig(
 CONFIG_FILE = "bot_config.json"
 TRIGGER = r'!raffle(?:\s+w\s*(\d+))?(?:\s+r\s*(\d+))?'
 RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")
-CONFIG_LAST_MODIFIED = None
 
 signature = (
     "\n\n---\n\n"
@@ -59,36 +58,20 @@ def save_data(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-def reload_data_if_changed():
-    """Reloads the config file if it has been modified, updating global parameters."""
-    global CONFIG_LAST_MODIFIED, data, SUBREDDITS, EXCLUDED_BOTS, EXCLUDED_USERS, WHITELISTED_USERS, MAX_WINNERS
-
-    try:
-        last_modified = os.path.getmtime(CONFIG_FILE)
-        if CONFIG_LAST_MODIFIED is None or last_modified > CONFIG_LAST_MODIFIED:
-            CONFIG_LAST_MODIFIED = last_modified
-            data = load_data()
-            SUBREDDITS = data["config"]["subreddits"]
-            EXCLUDED_BOTS = set(data["config"]["excluded_bots"])
-            EXCLUDED_USERS = set(data["config"]["excluded_users"])
-            WHITELISTED_USERS = set(data["config"]["whitelisted_users"])
-            MAX_WINNERS = data["config"]["max_winners"]
-            logging.info("Configuration dynamically reloaded from file.")
-            print("Configuration dynamically reloaded from file.")
-
-    except Exception as e:
-        logging.error(f"Error reloading configuration: {e}")
-
 data = load_data()
-CONFIG_LAST_MODIFIED = os.path.getmtime(CONFIG_FILE)
 PROCESSED_POSTS = set(data["processed_posts"])
 SUBREDDITS = data["config"]["subreddits"]
 EXCLUDED_BOTS = set(data["config"]["excluded_bots"])
 EXCLUDED_USERS = set(data["config"]["excluded_users"])
 WHITELISTED_USERS = set(data["config"]["whitelisted_users"])
 MAX_WINNERS = data["config"]["max_winners"]
+last_processed_timestamp = data["last_processed_timestamp"]
 
-reddit = login()
+try:
+    reddit = login()
+except Exception as e:
+    logging.error(f"Failed to log in to Reddit: {e}")
+    exit(1)
 
 def send_reward_to_winners(winners, reward, raffle_id):
     """Sends a DM to Canna_Tips for each winner with the reward amount."""
@@ -109,36 +92,40 @@ def monitor_subreddit(subreddit_name):
     """Monitors a single subreddit for comments that trigger the raffle."""
     subreddit = reddit.subreddit(subreddit_name)
     logging.info(f"Monitoring subreddit: {subreddit_name}")
-    print(f"Monitoring subreddit: {subreddit_name}")
-    for comment in subreddit.stream.comments(skip_existing=True):
-        reload_data_if_changed()
-        if comment.created_utc <= data["last_processed_timestamp"]:
-            continue
-        
-        # Check for trigger command in comment with optional `w` and `r` parameters
-        if match := re.search(TRIGGER, comment.body):
-            num_winners = int(match.group(1)) if match.group(1) else 1
-            reward = int(match.group(2)) if match.group(2) else 0
-            num_winners = min(num_winners, MAX_WINNERS)
+    global last_processed_timestamp
+    try:
+        for comment in subreddit.stream.comments(skip_existing=True):
+            if comment.created_utc <= last_processed_timestamp:
+                continue
             
-            handle_raffle(comment, num_winners, reward, subreddit_name)
-            
-        data["last_processed_timestamp"] = max(data["last_processed_timestamp"], comment.created_utc)
-        save_data(data)
+            # Check for trigger command in comment with optional `w` and `r` parameters
+            if match := re.search(TRIGGER, comment.body):
+                num_winners = int(match.group(1)) if match.group(1) else 1
+                reward = int(match.group(2)) if match.group(2) else 0
+                num_winners = min(num_winners, MAX_WINNERS)
+                
+                handle_raffle(comment, num_winners, reward, subreddit_name)
+                
+            last_processed_timestamp = max(last_processed_timestamp, comment.created_utc)
+            data["last_processed_timestamp"] = last_processed_timestamp
+            save_data(data)
+    except Exception as e:
+        logging.error(f"Error while monitoring subreddit {subreddit_name}: {e}")
 
 def monitor_subreddits():
     """Starts a thread for each subreddit to monitor them concurrently."""
-    print("Starting subreddit monitoring...")
     logging.info("Starting subreddit monitoring...")
-
-    for subreddit_name in SUBREDDITS:
-        print(f"Monitoring subreddit: {subreddit_name}")
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         while True:
-            reload_data_if_changed()
-            executor.map(monitor_subreddit, SUBREDDITS)
-            time.sleep(10)
+            try:
+                executor.map(monitor_subreddit, SUBREDDITS)
+                time.sleep(10)
+                # Periodically save processed posts to ensure consistency
+                data["processed_posts"] = list(PROCESSED_POSTS)
+                save_data(data)
+            except Exception as e:
+                logging.error(f"Unexpected error in monitoring loop: {e}")
 
 def get_random_numbers(n, min_val, max_val):
     """Fetches unique random numbers from Random.org, with a fallback to local random."""
@@ -173,13 +160,12 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
 
     if post_id in PROCESSED_POSTS:
         logging.info(f"Post {post_id} already processed. Ignoring.")
-        trigger_comment.reply("A raffle has already been completed in this post." ) + signature
+        trigger_comment.reply("A raffle has already been completed in this post." + signature)
         return
 
     if not (is_moderator(reddit, author_name, subreddit_name) or author_name in WHITELISTED_USERS):
-        trigger_comment.reply("This bot is currently reserved for subreddit moderators and approved users." ) + signature
+        trigger_comment.reply("This bot is currently reserved for subreddit moderators and approved users." + signature)
         logging.warning(f"User {author_name} attempted unauthorized bot usage.")
-        print(f"User {author_name} attempted unauthorized bot usage.")
         return
 
     PROCESSED_POSTS.add(post_id)
@@ -197,9 +183,8 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     }
 
     if len(participants) < num_winners:
-        trigger_comment.reply(f"Not enough participants to select {num_winners} winners." ) + signature
+        trigger_comment.reply(f"Not enough participants to select {num_winners} winners." + signature)
         logging.info("Not enough participants for the raffle.")
-        print("Not enough participants for the raffle.")
         return
 
     winner_indices = get_random_numbers(num_winners, 0, len(participants) - 1)
@@ -226,9 +211,8 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
         f"Thank you all for participating!{gradual_reward_notice}\n\n"
         f"{signature}"
     )
-    trigger_comment.reply(response_text) + signature
+    trigger_comment.reply(response_text)
     logging.info(f"Raffle completed in thread {post_id}. Winners: {winners} with reward: {reward}")
-    print(f"Raffle completed in thread {post_id}. Winners: {winners} with reward: {reward}")
 
     # Send reward to winners via DM to Canna_Tips if reward is specified
     if reward > 0:
@@ -236,5 +220,4 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
 
 if __name__ == "__main__":
     logging.info("Starting subreddit monitoring...")
-    print("Starting subreddit monitoring...")
     monitor_subreddits()
