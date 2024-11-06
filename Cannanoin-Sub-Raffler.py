@@ -9,14 +9,17 @@ import concurrent.futures
 import time
 import itertools
 import random
+import sys
+from logging.handlers import RotatingFileHandler
 
-# Logging configuration
-logging.basicConfig(
-    filename="bot.log",
-    filemode="a",
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+# Logging configuration with log rotation
+log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+log_handler = RotatingFileHandler("bot.log", maxBytes=5*1024*1024, backupCount=2)
+log_handler.setFormatter(log_formatter)
+log_handler.setLevel(logging.INFO)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(log_handler)
 
 CONFIG_FILE = "bot_config.json"
 TRIGGER = r'^!raffle(?:\s+w\s+(\d+))?(?:\s+r\s+(\d+))?$'
@@ -34,6 +37,9 @@ signature = (
 
 # Lock for synchronizing access to shared data
 data_lock = threading.Lock()
+# Lock for rate limiting invalid command responses
+rate_limit_lock = threading.Lock()
+invalid_command_timestamps = {}
 
 def load_data():
     """Loads data from the JSON file, creating defaults if file is missing."""
@@ -41,6 +47,7 @@ def load_data():
         "config": {
             "subreddits": ["MainSubreddit"],
             "max_winners": 5,
+            "max_reward": 100,
             "excluded_bots": ["AutoModerator", "timee_bot"],
             "excluded_users": [],
             "whitelisted_users": [],
@@ -52,9 +59,13 @@ def load_data():
 
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                logger.error("Configuration file is corrupted. Using default data.")
+                return default_data
     else:
-        logging.warning("Configuration file missing. Using default data.")
+        logger.warning("Configuration file missing. Using default data.")
         with open(CONFIG_FILE, "w") as f:
             json.dump(default_data, f, indent=4)
         return default_data
@@ -73,35 +84,39 @@ with data_lock:
     EXCLUDED_USERS = set(data["config"]["excluded_users"])
     WHITELISTED_USERS = set(data["config"]["whitelisted_users"])
     MAX_WINNERS = data["config"]["max_winners"]
+    MAX_REWARD = data["config"]["max_reward"]
     last_processed_timestamp = data["last_processed_timestamp"]
 
 try:
     reddit = login()
-    logging.info("Logged in to Reddit successfully.")
+    logger.info("Logged in to Reddit successfully.")
 except Exception as e:
-    logging.exception("Failed to log in to Reddit.")
-    exit(1)
+    logger.exception("Failed to log in to Reddit.")
+    sys.exit(1)
 
 def safe_int(value, default=0):
     """Converts a value to int safely."""
     try:
         return int(value)
     except (ValueError, TypeError):
-        logging.warning(f"Invalid integer input: {value}. Using default {default}.")
+        logger.warning(f"Invalid integer input: {value}. Using default {default}.")
         return default
 
 def validate_parameters(num_winners, reward):
     """Validates and adjusts the parameters to acceptable values."""
     if num_winners < 1:
-        logging.warning("num_winners less than 1; adjusted to 1.")
+        logger.warning("num_winners less than 1; adjusted to 1.")
         num_winners = 1
     elif num_winners > MAX_WINNERS:
-        logging.warning(f"num_winners exceeded MAX_WINNERS; adjusted to {MAX_WINNERS}.")
+        logger.warning(f"num_winners exceeded MAX_WINNERS; adjusted to {MAX_WINNERS}.")
         num_winners = MAX_WINNERS
 
     if reward < 0:
-        logging.warning("Negative reward adjusted to 0.")
+        logger.warning("Negative reward adjusted to 0.")
         reward = 0
+    elif reward > MAX_REWARD:
+        logger.warning(f"Reward exceeded MAX_REWARD; adjusted to {MAX_REWARD}.")
+        reward = MAX_REWARD
 
     return num_winners, reward
 
@@ -122,24 +137,40 @@ def parse_command(command_text):
     return num_winners, reward
 
 def send_reward_to_winners(winners, reward, raffle_id):
-    """Sends a DM to Canna_Tips for each winner with the reward amount."""
-    for winner in winners:
-        message_subject = f"Reward Raffle {raffle_id}"
-        message_body = f"send {reward} u/{winner}"
-        try:
-            reddit.redditor("Canna_Tips").message(
-                subject=message_subject,
-                message=message_body
-            )
-            logging.info(f"Reward of {reward} sent to u/{winner} in raffle {raffle_id}.")
-        except Exception as e:
-            logging.exception(f"Failed to send reward to u/{winner}.")
-        time.sleep(60)  # Wait 1 minute between each reward distribution
+    """Sends a DM to Canna_Tips for each winner with the reward amount asynchronously."""
+    def send_rewards():
+        for winner in winners:
+            message_subject = f"Reward Raffle {raffle_id}"
+            message_body = f"send {reward} u/{winner}"
+            try:
+                reddit.redditor("Canna_Tips").message(
+                    subject=message_subject,
+                    message=message_body
+                )
+                logger.info(f"Reward of {reward} sent to u/{winner} in raffle {raffle_id}.")
+            except Exception as e:
+                logger.exception(f"Failed to send reward to u/{winner}.")
+            time.sleep(60)  # Wait 1 minute between each reward distribution
+
+    threading.Thread(target=send_rewards, daemon=True).start()
+
+def should_rate_limit(user):
+    """Checks if we should rate limit responses to invalid commands from this user."""
+    with rate_limit_lock:
+        now = time.time()
+        timestamps = invalid_command_timestamps.get(user, [])
+        # Remove timestamps older than an hour
+        timestamps = [t for t in timestamps if now - t < 3600]
+        if len(timestamps) >= 3:
+            return True
+        timestamps.append(now)
+        invalid_command_timestamps[user] = timestamps
+        return False
 
 def monitor_subreddit(subreddit_name):
     """Monitors a single subreddit for comments that trigger the raffle."""
     subreddit = reddit.subreddit(subreddit_name)
-    logging.info(f"Monitoring subreddit: {subreddit_name}")
+    logger.info(f"Monitoring subreddit: {subreddit_name}")
     global last_processed_timestamp
     try:
         for comment in subreddit.stream.comments(skip_existing=True):
@@ -150,26 +181,34 @@ def monitor_subreddit(subreddit_name):
                 data["last_processed_timestamp"] = last_processed_timestamp
                 save_data(data)
 
+            author_name = comment.author.name if comment.author else "[deleted]"
+
             # Check for trigger command in comment with input validation
             num_winners, reward = parse_command(comment.body)
             if num_winners is None:
                 # Invalid command format
-                try:
-                    comment.reply(
-                        "Invalid command format. Please use `!raffle w [number of winners] r [reward amount]`." + signature
-                    )
-                except Exception as e:
-                    logging.exception("Failed to reply to invalid command.")
-                logging.warning(f"Invalid command format by u/{comment.author.name}: {comment.body}")
+                if is_moderator(reddit, author_name, subreddit_name) or author_name in WHITELISTED_USERS:
+                    if not should_rate_limit(author_name):
+                        try:
+                            comment.reply(
+                                "Invalid command format. Please use `!raffle w [number of winners] r [reward amount]`." + signature
+                            )
+                        except Exception as e:
+                            logger.exception("Failed to reply to invalid command.")
+                        logger.warning(f"Invalid command format by authorized user u/{author_name}: {comment.body}")
+                    else:
+                        logger.info(f"Rate limiting invalid command responses for u/{author_name}.")
+                else:
+                    logger.warning(f"Invalid command format by unauthorized user u/{author_name}. No reply sent.")
                 continue
 
             handle_raffle(comment, num_winners, reward, subreddit_name)
     except Exception as e:
-        logging.exception(f"Error while monitoring subreddit {subreddit_name}.")
+        logger.exception(f"Error while monitoring subreddit {subreddit_name}.")
 
 def monitor_subreddits():
     """Starts a thread for each subreddit to monitor them concurrently."""
-    logging.info("Starting subreddit monitoring...")
+    logger.info("Starting subreddit monitoring...")
     spinner = itertools.cycle(['|', '/', '-', '\\'])
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(SUBREDDITS)) as executor:
         futures = {executor.submit(monitor_subreddit, subreddit): subreddit for subreddit in SUBREDDITS}
@@ -186,14 +225,14 @@ def monitor_subreddits():
                     try:
                         future.result()
                     except Exception as e:
-                        logging.exception(f"Thread monitoring {subreddit} terminated unexpectedly.")
+                        logger.exception(f"Thread monitoring {subreddit} terminated unexpectedly.")
                         # Restart the thread
                         futures[executor.submit(monitor_subreddit, subreddit)] = subreddit
                         del futures[future]
         except KeyboardInterrupt:
-            logging.info("Bot stopped by user.")
+            logger.info("Bot stopped by user.")
         except Exception as e:
-            logging.exception("Unexpected error in monitoring loop.")
+            logger.exception("Unexpected error in monitoring loop.")
 
 def get_random_numbers(n, min_val, max_val):
     """Fetches unique random numbers from Random.org, with a fallback to local random."""
@@ -218,7 +257,7 @@ def get_random_numbers(n, min_val, max_val):
             result = response.json()
             return result.get("result", {}).get("random", {}).get("data", [])
         except Exception as e:
-            logging.exception("Error in Random.org request. Using local random fallback.")
+            logger.exception("Error in Random.org request. Using local random fallback.")
 
     # Local random fallback
     return random.sample(range(min_val, max_val + 1), n)
@@ -226,18 +265,18 @@ def get_random_numbers(n, min_val, max_val):
 def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     """Handles the raffle process, excluding post and trigger authors."""
     try:
-        author_name = trigger_comment.author.name
+        author_name = trigger_comment.author.name if trigger_comment.author else "[deleted]"
         post_author = trigger_comment.submission.author
         post_author_name = post_author.name if post_author else "[deleted]"
         post_id = trigger_comment.submission.id
 
         with data_lock:
             if post_id in PROCESSED_POSTS:
-                logging.info(f"Post {post_id} already processed. Ignoring.")
+                logger.info(f"Post {post_id} already processed. Ignoring.")
                 try:
                     trigger_comment.reply("A raffle has already been completed in this post." + signature)
                 except Exception as e:
-                    logging.exception("Failed to reply about already processed post.")
+                    logger.exception("Failed to reply about already processed post.")
                 return
 
             if not (is_moderator(reddit, author_name, subreddit_name) or author_name in WHITELISTED_USERS):
@@ -246,8 +285,8 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
                         "This bot is currently reserved for subreddit moderators and approved users." + signature
                     )
                 except Exception as e:
-                    logging.exception("Failed to reply about unauthorized usage.")
-                logging.warning(f"Unauthorized bot usage attempt by u/{author_name}.")
+                    logger.exception("Failed to reply about unauthorized usage.")
+                logger.warning(f"Unauthorized bot usage attempt by u/{author_name}.")
                 return
 
             PROCESSED_POSTS.add(post_id)
@@ -271,8 +310,8 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
                     f"Not enough participants to select {num_winners} winners." + signature
                 )
             except Exception as e:
-                logging.exception("Failed to reply about insufficient participants.")
-            logging.info("Not enough participants for the raffle.")
+                logger.exception("Failed to reply about insufficient participants.")
+            logger.info("Not enough participants for the raffle.")
             return
 
         participants_list = list(participants)
@@ -302,8 +341,8 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
         try:
             trigger_comment.reply(response_text)
         except Exception as e:
-            logging.exception("Failed to reply with raffle results.")
-        logging.info(
+            logger.exception("Failed to reply with raffle results.")
+        logger.info(
             f"Raffle {raffle_id} completed in thread {post_id}. "
             f"Winners: {winners} with reward: {reward}"
         )
@@ -312,11 +351,11 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
             send_reward_to_winners(winners, reward, raffle_id)
 
     except Exception as e:
-        logging.exception("Error in handling raffle.")
+        logger.exception("Error in handling raffle.")
 
 if __name__ == "__main__":
-    logging.info("Bot is starting...")
+    logger.info("Bot is starting...")
     try:
         monitor_subreddits()
     except Exception as e:
-        logging.exception("Critical error. Bot is shutting down.")
+        logger.exception("Critical error. Bot is shutting down.")
