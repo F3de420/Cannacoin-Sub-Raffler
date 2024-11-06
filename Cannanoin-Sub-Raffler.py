@@ -5,6 +5,7 @@ import requests
 import logging
 from bot import login, is_moderator
 import concurrent.futures
+import time  # Import required for periodic monitoring
 
 # Logging configuration
 logging.basicConfig(
@@ -17,16 +18,17 @@ logging.basicConfig(
 CONFIG_FILE = "bot_config.json"
 TRIGGER = r'!raffle\s*(\d*)'
 RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")
+CONFIG_LAST_MODIFIED = None  # Store last modification time of the config file
 
 def load_data():
-    """Loads data from the JSON file, creating defaults if file is missing."""
+    """Loads data from the JSON config file, creating defaults if file is missing."""
     default_data = {
         "config": {
             "subreddits": ["MainSubreddit"],
             "max_winners": 5,
             "excluded_bots": ["AutoModerator", "timee_bot"],
             "excluded_users": [],
-            "whitelisted_users": [],  # Added whitelist field
+            "whitelisted_users": [],
             "raffle_count": 0
         },
         "processed_posts": [],
@@ -43,11 +45,37 @@ def load_data():
         return default_data
 
 def save_data(data):
-    """Saves data to JSON file."""
+    """Saves data back to the JSON config file."""
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+def reload_data_if_changed():
+    """Reloads the config file if it has been modified, updating global parameters."""
+    global CONFIG_LAST_MODIFIED, data, SUBREDDITS, EXCLUDED_BOTS, EXCLUDED_USERS, WHITELISTED_USERS, MAX_WINNERS
+
+    try:
+        last_modified = os.path.getmtime(CONFIG_FILE)
+        if CONFIG_LAST_MODIFIED is None or last_modified > CONFIG_LAST_MODIFIED:
+            # Update the last modified timestamp and reload data
+            CONFIG_LAST_MODIFIED = last_modified
+            data = load_data()
+
+            # Update global parameters with new data
+            SUBREDDITS = data["config"]["subreddits"]
+            EXCLUDED_BOTS = set(data["config"]["excluded_bots"])
+            EXCLUDED_USERS = set(data["config"]["excluded_users"])
+            WHITELISTED_USERS = set(data["config"]["whitelisted_users"])
+            MAX_WINNERS = data["config"]["max_winners"]
+
+            logging.info("Configuration dynamically reloaded from file.")
+            print("Configuration dynamically reloaded from file.")
+
+    except Exception as e:
+        logging.error(f"Error reloading configuration: {e}")
+
+# Load initial configuration
 data = load_data()
+CONFIG_LAST_MODIFIED = os.path.getmtime(CONFIG_FILE)
 PROCESSED_POSTS = set(data["processed_posts"])
 SUBREDDITS = data["config"]["subreddits"]
 EXCLUDED_BOTS = set(data["config"]["excluded_bots"])
@@ -63,14 +91,17 @@ def monitor_subreddit(subreddit_name):
     logging.info(f"Monitoring subreddit: {subreddit_name}")
     print(f"Monitoring subreddit: {subreddit_name}")
     for comment in subreddit.stream.comments(skip_existing=True):
+        reload_data_if_changed()  # Check for config updates
         if comment.created_utc <= data["last_processed_timestamp"]:
             continue
         
+        # Check for trigger command in comment
         if match := re.search(TRIGGER, comment.body):
             num_winners = int(match.group(1)) if match.group(1) else 1
             num_winners = min(num_winners, MAX_WINNERS)
             handle_raffle(comment, num_winners, subreddit_name)
             
+        # Update the last processed timestamp
         data["last_processed_timestamp"] = max(data["last_processed_timestamp"], comment.created_utc)
         save_data(data)
 
@@ -85,10 +116,13 @@ def monitor_subreddits():
 
     # Use ThreadPoolExecutor to monitor each subreddit concurrently
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        executor.map(monitor_subreddit, SUBREDDITS)
+        while True:
+            reload_data_if_changed()  # Check if there are any configuration changes
+            executor.map(monitor_subreddit, SUBREDDITS)
+            time.sleep(10)  # Check every 10 seconds
 
 def get_random_numbers(n, min_val, max_val):
-    """Fetches unique random numbers from Random.org, with fallback."""
+    """Fetches unique random numbers from Random.org, with a fallback to local random."""
     url = "https://api.random.org/json-rpc/2/invoke"
     headers = {"content-type": "application/json"}
     params = {
@@ -131,10 +165,12 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
         print(f"User {author_name} attempted unauthorized bot usage.")
         return
 
+    # Add post to processed posts and update configuration
     PROCESSED_POSTS.add(post_id)
     data["processed_posts"] = list(PROCESSED_POSTS)
     save_data(data)
 
+    # Collect participants, excluding specific authors
     post = trigger_comment.submission
     post.comments.replace_more(limit=None)
     participants = {
@@ -145,6 +181,7 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
         and c.author.name not in EXCLUDED_USERS
     }
 
+    # If there aren't enough participants, log and notify
     if len(participants) < num_winners:
         trigger_comment.reply(f"Not enough participants to select {num_winners} winners.")
         logging.info("Not enough participants for the raffle.")
@@ -173,7 +210,7 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
         "[Shroomz Discord](https://discord.gg/PXkKFKwZVA)"
     )
 
-    # Detailed response with winners tagged, participants, and signature
+    # Response text with winners, participants, and signature
     response_text = (
         f"**Raffle completed!**\n\n"
         f"**Qualified participants:**\n{participants_text}\n\n"
@@ -184,9 +221,8 @@ def handle_raffle(trigger_comment, num_winners, subreddit_name):
     trigger_comment.reply(response_text)
     logging.info(f"Raffle completed in thread {post_id}. Winners: {winners}")
     print(f"Raffle completed in thread {post_id}. Winners: {winners}")
-    print(f"Starting subreddit monitoring...")
 
 if __name__ == "__main__":
     logging.info("Starting subreddit monitoring...")
-    print(f"Starting subreddit monitoring...")
+    print("Starting subreddit monitoring...")
     monitor_subreddits()
