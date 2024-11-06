@@ -20,6 +20,16 @@ TRIGGER = r'!raffle(?:\s+w\s*(\d+))?(?:\s+r\s*(\d+))?'
 RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")
 CONFIG_LAST_MODIFIED = None
 
+signature = (
+    "\n\n---\n\n"
+    "[Cannacoin Raffler](https://github.com/F3de420/Cannacoin-Sub-Raffler) | "
+    "[r/StellarCannacoin](https://www.reddit.com/r/StellarCannaCoin/) | "
+    "[r/StellarShroomz](https://www.reddit.com/r/StellarShroomz) | "
+    "[StashApp](https://stashapp.cloud/) | "
+    "[Cannacoin Discord](https://discord.gg/Xrpxm34QgW) | "
+    "[Shroomz Discord](https://discord.gg/PXkKFKwZVA)"
+)
+
 def load_data():
     """Loads data from the JSON file, creating defaults if file is missing."""
     default_data = {
@@ -88,8 +98,7 @@ def send_reward_to_winners(winners, reward, raffle_id):
         try:
             reddit.redditor("Canna_Tips").message(
                 subject=message_subject,
-                message=message_body,
-                from_subreddit="canna_raffle_bot"
+                message=message_body
             )
             logging.info(f"Reward of {reward} sent to u/{winner} in raffle {raffle_id}.")
         except Exception as e:
@@ -164,11 +173,11 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
 
     if post_id in PROCESSED_POSTS:
         logging.info(f"Post {post_id} already processed. Ignoring.")
-        trigger_comment.reply("A raffle has already been completed in this post.")
+        trigger_comment.reply("A raffle has already been completed in this post." ) + signature
         return
 
     if not (is_moderator(reddit, author_name, subreddit_name) or author_name in WHITELISTED_USERS):
-        trigger_comment.reply("This bot is currently reserved for subreddit moderators and approved users.")
+        trigger_comment.reply("This bot is currently reserved for subreddit moderators and approved users." ) + signature
         logging.warning(f"User {author_name} attempted unauthorized bot usage.")
         print(f"User {author_name} attempted unauthorized bot usage.")
         return
@@ -188,7 +197,7 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     }
 
     if len(participants) < num_winners:
-        trigger_comment.reply(f"Not enough participants to select {num_winners} winners.")
+        trigger_comment.reply(f"Not enough participants to select {num_winners} winners." ) + signature
         logging.info("Not enough participants for the raffle.")
         print("Not enough participants for the raffle.")
         return
@@ -202,17 +211,6 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     data["config"]["raffle_count"] += 1
     raffle_id = data["config"]["raffle_count"]
     save_data(data)
-
-    # Signature with useful links
-    signature = (
-        "\n\n---\n\n"
-        "[Cannacoin Raffler](https://github.com/F3de420/Cannacoin-Sub-Raffler) | "
-        "[r/StellarCannacoin](https://www.reddit.com/r/StellarCannaCoin/) | "
-        "[r/StellarShroomz](https://www.reddit.com/r/StellarShroomz) | "
-        "[StashApp](https://stashapp.cloud/) | "
-        "[Cannacoin Discord](https://discord.gg/Xrpxm34QgW) | "
-        "[Shroomz Discord](https://discord.gg/PXkKFKwZVA)"
-    )
 
     # Including the reward in the response if specified
     reward_text = f" with a reward of {reward}" if reward > 0 else ""
@@ -228,7 +226,7 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
         f"Thank you all for participating!{gradual_reward_notice}\n\n"
         f"{signature}"
     )
-    trigger_comment.reply(response_text)
+    trigger_comment.reply(response_text) + signature
     logging.info(f"Raffle completed in thread {post_id}. Winners: {winners} with reward: {reward}")
     print(f"Raffle completed in thread {post_id}. Winners: {winners} with reward: {reward}")
 
