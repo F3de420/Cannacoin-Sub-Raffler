@@ -6,6 +6,7 @@ import logging
 from bot import login, is_moderator
 import concurrent.futures
 import time
+import itertools
 
 # Logging configuration
 logging.basicConfig(
@@ -115,12 +116,14 @@ def monitor_subreddit(subreddit_name):
 def monitor_subreddits():
     """Starts a thread for each subreddit to monitor them concurrently."""
     logging.info("Starting subreddit monitoring...")
+    spinner = itertools.cycle(['|', '/', '-', '\\'])
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         while True:
             try:
                 executor.map(monitor_subreddit, SUBREDDITS)
-                time.sleep(10)
+                time.sleep(1)
+                print(f"Bot running... {next(spinner)}", end="\r")
                 # Periodically save processed posts to ensure consistency
                 data["processed_posts"] = list(PROCESSED_POSTS)
                 save_data(data)
