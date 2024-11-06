@@ -4,136 +4,121 @@
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Status](https://img.shields.io/badge/status-active-brightgreen.svg)
 
-This is a Reddit raffle bot developed for the **Stellar CANNACOIN** subreddit. It allows subreddit moderators to trigger a raffle in a post, automatically selecting random winners from eligible participants. The bot excludes spammer users and bots and only allows one raffle per post.
+### Overview
 
----
+The **Cannacoin-Sub-Raffler** bot developed for the **[Stellar CANNACOIN subreddit](https://www.reddit.com/r/StellarCannaCoin/) ** is a specialized Reddit bot developed to facilitate and manage raffle events within selected subreddits. By monitoring comments and processing user-triggered commands, this bot provides an automated solution for drawing random winners in a fair, efficient, and customizable way.
 
-## Features
+### Key Features
 
-- Automatically monitoring specified subreddits for raffle triggers.
-- Uses the [Random.org API](https://random.org) for drawing unique random numbers.
-- Excludes specified users and bots from raffles.
-- Excludes post and trigger author
-- Lists the qualified users
-- Notifies winner
+- **Dynamic Monitoring**: Concurrently monitors multiple subreddits, tracking specific trigger commands to initiate raffles.
+- **User Permissions**: Only authorized users (subreddit moderators or whitelisted users) can trigger a raffle, providing control over the bot's operation.
+- **Automated Winner Selection**: Leverages the [Random.org API](https://random.org) for unbiased winner selection, with a local fallback if the API is unavailable.
+- **Configurable Settings**: Easily customizable through a configuration file (`bot_config.json`) that allows for adjustments to subreddits, excluded users/bots, and other settings.
+- **Dynamic Reloading**: Automatically detects and applies changes to the configuration file without restarting, providing seamless updates to monitored subreddits or user permissions.
 
----
-
-## Prerequisites
-
-- Python 3.x installed.
-- A Reddit application and account for the bot.
-
----
-
-## Installation
-
-Clone the repository:
-```bash
-git clone https://github.com/YourUsername/Cannacoin-Sub-Raffler.git
-cd Cannacoin-Sub-Raffler
-```
-
-Install dependencies:
+### Repository Structure
 
 ```
-pip install -r requirements.txt
+bashCopia codice.
+├── Cannanoin-Sub-Raffler.py      # Main script handling subreddit monitoring and raffle processing.
+├── bot.py                        # Helper script for logging into Reddit and checking user permissions.
+├── bot_config.json               # Configuration file defining subreddits, max winners, and user restrictions.
+└── README.md                     # Project documentation.
 ```
 
-------
+### Setup and Configuration
 
-## Setup and Configuration
+#### Prerequisites
 
-1. **Create a Reddit Application:**
+1. **Python 3.8+**: Ensure Python is installed on your system.
+2. **Reddit Account**: Register a Reddit application to obtain API credentials for bot authentication.
+3. **Random.org API Key**: Generate an API key on [Random.org](https://random.org) if random number generation via their service is desired.
 
-   - Go to [Reddit's App Preferences](https://www.reddit.com/prefs/apps).
-   - Click on **Create App** or **Create Another App**.
-   - Set **App Type** to **script**.
-   - Fill out **name**, **redirect URI** (e.g., `http://localhost:8080`), and **description**.
-   - Save your **Client ID** (under the app's name) and **Client Secret**.
+#### Installation
 
-2. **Obtain Refresh Token:**
-
-   - Follow instructions from the [PRAW documentation](https://praw.readthedocs.io/) to obtain a refresh token.
-
-3. **Set Environment Variables:** Add the following to your environment or use a `.env` file:
+1. Clone the repository:
 
    ```
-   export APP_ID="your_client_id"
-   export APP_SECRET="your_client_secret"
-   export APP_REFRESH="your_refresh_token"
-   export REDDIT_USERNAME="your_bot_username"
-   export REDDIT_PASSWORD="your_bot_password"
-   export RANDOM_ORG_API_KEY="your_random_org_api_key"
+   bashCopia codicegit clone https://github.com/YourUsername/Cannacoin-Sub-Raffler.git
+   cd Cannacoin-Sub-Raffler
    ```
 
-4. **Configure `bot_config.json`:**
-
-   Update `bot_config.json` with your subreddit, excluded users/bots, and other settings:
+2. Install required packages:
 
    ```
-   {
-       "config": {
-           "subreddits": ["your_subreddit"],
-           "max_winners": 10,
-           "excluded_bots": ["AutoModerator", "timee_bot"],
-           "excluded_users": ["spammer_user"],
-           "raffle_count": 0
-       },
-       "processed_posts": [],
-       "last_processed_timestamp": 0
-   }
+   bash
+   
+   
+   Copia codice
+   pip install praw requests
    ```
 
+#### Environment Variables
+
+Create a `.env` file or configure your environment with the following variables:
+
+- **`APP_ID`**: Reddit API client ID.
+- **`APP_SECRET`**: Reddit API client secret.
+- **`APP_REFRESH`**: Reddit refresh token.
+- **`REDDIT_USERNAME`**: Reddit account username.
+- **`REDDIT_PASSWORD`**: Reddit account password.
+- **`RANDOM_ORG_API_KEY`**: (Optional) API key for Random.org.
+
+#### Configuration File (`bot_config.json`)
+
+The `bot_config.json` file controls most aspects of the bot’s behavior:
+
+- **`subreddits`**: List of subreddits to monitor for raffles.
+- **`max_winners`**: Maximum number of winners for any raffle.
+- **`excluded_bots`**: Bots to exclude from the raffle (e.g., `AutoModerator`).
+- **`excluded_users`**: Specific users to exclude from the raffle.
+- **`whitelisted_users`**: Users authorized to trigger raffles.
+- **`raffle_count`**: Tracks the total number of raffles conducted.
+
+> **Note**: This file dynamically updates while the bot is running, meaning changes will be detected and applied without needing to restart the bot.
+
+### Usage
+
+1. **Start the Bot**:
+
+   ```
+   bash
+   
+   
+   Copia codice
+   python Cannanoin-Sub-Raffler.py
+   ```
+
+   The bot will log into Reddit, start monitoring the specified subreddits, and log all activity to `bot.log`.
+
+2. **Triggering a Raffle**:
+
+   - Authorized users can initiate a raffle by posting a comment with the `!raffle` command in a monitored subreddit. The command accepts an optional number to specify the desired number of winners.
+   - Example usage:
+     - `!raffle 3` (selects up to 3 winners)
+     - `!raffle` (selects 1 winner by default)
+
+3. **Raffle Response**:
+
+   - Once triggered, the bot gathers eligible participants from the post, excluding any defined in `excluded_users` or `excluded_bots`.
+   - Winners are selected randomly, and the bot replies with the list of winners, thanking participants.
+
+### Logging and Monitoring
+
+- **Logging**: Activity and errors are logged to `bot.log`, allowing for easy tracking of bot actions and any issues encountered.
+- **Configuration Reloading**: The bot checks for changes to `bot_config.json` every 10 seconds, applying any updates to monitored subreddits, whitelisted users, or excluded users in real time.
+
 ------
 
-## Running the Bot
-
-To start the bot manually:
-
-```
-python3 cannacoin-sub-raffler.py
-```
+**Disclaimer**: This bot is provided as-is, without warranty of any kind. Use at your own risk and comply with Reddit’s Terms of Service and API Terms.
 
 ------
 
-## Code Overview
+License
 
-### `cannacoin-sub-raffler.py`
-
-This is the main script responsible for monitoring comments, handling the raffle, and replying with the results.
-
-#### Key Functions:
-
-- **load_data**: Loads configuration and processed posts from `bot_config.json`. Logs a warning if using default data.
-- **monitor_subreddits**: Monitors subreddit comments and triggers the raffle function.
-- **get_random_numbers**: Fetches random numbers from Random.org, with a local fallback in case of error.
-- **handle_raffle**: Handles the raffle logic, excluding certain users and handling single-raffle-per-post logic.
-
-### `bot.py`
-
-Contains the functions for logging into Reddit via PRAW and verifying moderator status.
+This project is licensed under the MIT License
 
 ------
 
-## Example Usage
+Happy Raffle Hosting! 🎉
 
-To trigger a raffle, a moderator can comment `!<TRIGGER>` in a post on the configured subreddit. The bot will:
-
-- Check if a raffle has already been held in the post.
-- Select random winners from the eligible participants.
-
-------
-
-## Requirements
-
-```
-praw
-requests
-```
-
-------
-
-## License
-
-This project is licensed under the MIT License.
