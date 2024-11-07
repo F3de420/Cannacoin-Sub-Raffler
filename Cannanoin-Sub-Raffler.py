@@ -55,7 +55,7 @@ def load_data():
         "config": {
             "subreddits": ["MainSubreddit"],
             "max_winners": 5,
-            "max_reward": 100,
+            "max_reward": 10000,
             "min_reward": 1000,
             "excluded_bots": ["AutoModerator", "timee_bot"],
             "excluded_users": [],
