@@ -148,7 +148,7 @@ def send_reward_to_winners(winners, reward, raffle_id):
                     message=message_body
                 )
                 logger.info(f"Reward of {reward} sent to u/{winner} in raffle {raffle_id}.")
-            except Exception as e:
+            except Exception:
                 logger.exception(f"Failed to send reward to u/{winner}.")
             time.sleep(60)  # Wait 1 minute between each reward distribution
 
