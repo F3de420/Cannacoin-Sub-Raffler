@@ -6,6 +6,8 @@
         "max_winners": 10,
         "max_reward": 10000,
         "min_reward": 1000,
+        "min_account_age_days": 60,
+        "min_comment_karma": 50
         "excluded_bots": [
             "bot1",
             "bot2"
@@ -15,10 +17,7 @@
             "user1",
             "user2"
         ],
-        "raffle_count": 0,
-        "min_account_age_days": 60,
-        "min_comment_karma": 50,
-        "min_comments_in_sub": 5
+        "raffle_count": 0
     },
     "processed_posts": [],
     "last_processed_timestamp": 
