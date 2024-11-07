@@ -1,7 +1,8 @@
+# -*- coding: utf-8 -*-
+
 import os
 import re
 import json
-import requests
 import logging
 import threading
 from bot import login, is_moderator
@@ -14,17 +15,15 @@ from logging.handlers import RotatingFileHandler
 
 # Logging configuration with log rotation
 log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-log_handler = RotatingFileHandler("bot.log", maxBytes=5*1024*1024, backupCount=2)
+log_handler = RotatingFileHandler("bot.log", maxBytes=5 * 1024 * 1024, backupCount=2)
 log_handler.setFormatter(log_formatter)
 log_handler.setLevel(logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logger.addHandler(log_handler)
 
 CONFIG_FILE = "bot_config.json"
-STATE_FILE = "bot_state.json"
 TRIGGER = r'^!raffle(?:\s+w\s+(\d+))?(?:\s+r\s+(\d+))?$'
-RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")
 
 signature = (
     "\n\n---\n\n"
@@ -39,12 +38,10 @@ signature = (
 # Constants
 DELETED_USER = "[deleted]"
 
-# Lock for synchronizing access to shared data
+# Locks for synchronizing access to shared data
 data_lock = threading.Lock()
-# Lock for rate limiting invalid command responses
 rate_limit_lock = threading.Lock()
 invalid_command_timestamps = {}
-valid_command_timestamps = {}
 
 def load_data():
     """
@@ -59,13 +56,12 @@ def load_data():
             "max_winners": 5,
             "max_reward": 10000,
             "min_reward": 1000,
+            "min_account_age_days": 0,
+            "min_comment_karma": 0,
             "excluded_bots": ["AutoModerator", "timee_bot"],
             "excluded_users": [],
             "whitelisted_users": [],
-            "raffle_count": 0,
-            "min_account_age_days": 30,
-            "min_comment_karma": 50,
-            "min_comments_in_sub": 5
+            "raffle_count": 0
         },
         "processed_posts": [],
         "last_processed_timestamp": 0
@@ -95,50 +91,7 @@ def save_data(data):
         with open(CONFIG_FILE, "w") as f:
             json.dump(data, f, indent=4)
 
-def load_state():
-    """
-    Loads state data from the JSON state file. If the file does not exist, creates default state.
-
-    Returns:
-        dict: State data loaded from the file or default state.
-    """
-    default_state = {
-        "invalid_command_timestamps": {},
-        "valid_command_timestamps": {},
-        "last_processed_timestamp": 0
-    }
-
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                logger.error("State file is corrupted. Using default state.")
-                return default_state
-    else:
-        logger.warning("State file missing. Using default state.")
-        with open(STATE_FILE, "w") as f:
-            json.dump(default_state, f, indent=4)
-        return default_state
-
-def save_state(state):
-    """
-    Saves state data to the JSON state file with thread-safe access.
-
-    Args:
-        state (dict): The state data to save.
-    """
-    with data_lock:
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f, indent=4)
-
-# Load data and state
 data = load_data()
-state = load_state()
-invalid_command_timestamps = state.get("invalid_command_timestamps", {})
-valid_command_timestamps = state.get("valid_command_timestamps", {})
-last_processed_timestamp = state.get("last_processed_timestamp", 0)
-
 with data_lock:
     PROCESSED_POSTS = set(data["processed_posts"])
     SUBREDDITS = data["config"]["subreddits"]
@@ -148,15 +101,15 @@ with data_lock:
     MAX_WINNERS = data["config"]["max_winners"]
     MAX_REWARD = data["config"]["max_reward"]
     MIN_REWARD = data["config"].get("min_reward", 1000)
-    MIN_ACCOUNT_AGE_DAYS = data["config"].get("min_account_age_days", 30)
-    MIN_COMMENT_KARMA = data["config"].get("min_comment_karma", 50)
-    MIN_COMMENTS_IN_SUB = data["config"].get("min_comments_in_sub", 5)
+    MIN_ACCOUNT_AGE_DAYS = data["config"].get("min_account_age_days", 0)
+    MIN_COMMENT_KARMA = data["config"].get("min_comment_karma", 0)
+    last_processed_timestamp = data["last_processed_timestamp"]
 
 try:
     reddit = login()
-    logger.info(f"Logged in to Reddit successfully at {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())}")
+    logger.info("Successfully logged into Reddit.")
 except Exception:
-    logger.exception("Failed to log in to Reddit.")
+    logger.exception("Failed to log into Reddit.")
     sys.exit(1)
 
 def safe_int(value, default=0):
@@ -165,7 +118,7 @@ def safe_int(value, default=0):
 
     Args:
         value: The value to convert.
-        default (int, optional): The default value to use if conversion fails. Defaults to 0.
+        default (int, optional): Default value if conversion fails. Defaults to 0.
 
     Returns:
         int: The converted integer value, or the default if conversion fails.
@@ -181,8 +134,8 @@ def validate_parameters(num_winners, reward):
     Validates and adjusts the parameters for the raffle to acceptable values.
 
     Args:
-        num_winners (int): The number of winners requested.
-        reward (int): The reward amount requested.
+        num_winners (int): The requested number of winners.
+        reward (int): The requested reward amount.
 
     Returns:
         tuple: The validated number of winners and reward amount.
@@ -192,14 +145,14 @@ def validate_parameters(num_winners, reward):
         reward = max(MIN_REWARD, min(reward, MAX_REWARD))
 
     if num_winners < 1:
-        logger.warning(f"num_winners less than 1; adjusted to 1. (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
+        logger.warning("num_winners less than 1; set to 1.")
     elif num_winners > MAX_WINNERS:
-        logger.warning(f"num_winners exceeded MAX_WINNERS; adjusted to {MAX_WINNERS}. (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
+        logger.warning(f"num_winners exceeds MAX_WINNERS; set to {MAX_WINNERS}.")
 
     if reward < 0:
-        logger.warning(f"Negative reward adjusted to 0. (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
+        logger.warning("Negative reward adjusted to 0.")
     elif reward > MAX_REWARD:
-        logger.warning(f"Reward exceeded MAX_REWARD; adjusted to {MAX_REWARD}. (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
+        logger.warning(f"Reward exceeds MAX_REWARD; set to {MAX_REWARD}.")
 
     return num_winners, reward
 
@@ -211,11 +164,10 @@ def parse_command(command_text):
         command_text (str): The text of the command to parse.
 
     Returns:
-        tuple: The number of winners and reward, or (None, None) if the command is invalid.
+        tuple: The number of winners and reward amount, or (None, None) if the command is invalid.
     """
-    match = re.fullmatch(TRIGGER, command_text.strip())
+    match = re.match(TRIGGER, command_text.strip())
     if not match:
-        logger.warning(f"Invalid command format received: '{command_text.strip()}' (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
         return None, None  # Invalid command
 
     num_winners_str = match.group(1)
@@ -227,73 +179,6 @@ def parse_command(command_text):
     num_winners, reward = validate_parameters(num_winners, reward)
 
     return num_winners, reward
-
-def should_rate_limit(user, is_valid_command):
-    """
-    Checks if the response to a command from a user should be rate-limited.
-
-    Args:
-        user (str): The username to check.
-        is_valid_command (bool): True if the command is valid, False otherwise.
-
-    Returns:
-        bool: True if the user should be rate-limited, False otherwise.
-    """
-    timestamp_dict = valid_command_timestamps if is_valid_command else invalid_command_timestamps
-    with rate_limit_lock:
-        now = time.time()
-        timestamps = timestamp_dict.get(user, [])
-        # Remove timestamps older than an hour
-        timestamps = [t for t in timestamps if now - t < 3600]
-        if len(timestamps) >= 3:
-            return True
-        timestamps.append(now)
-        timestamp_dict[user] = timestamps
-        save_state({
-            "invalid_command_timestamps": invalid_command_timestamps,
-            "valid_command_timestamps": valid_command_timestamps,
-            "last_processed_timestamp": last_processed_timestamp
-        })
-        return False
-
-def is_valid_participant(author, subreddit_name):
-    """
-    Checks if the author is a valid participant based on account age, karma, and subreddit activity.
-
-    Args:
-        author (praw.models.Redditor): The author to check.
-        subreddit_name (str): The name of the subreddit.
-
-    Returns:
-        bool: True if the author is a valid participant, False otherwise.
-    """
-    if not author or author.created_utc is None:
-        return False
-
-    # Check account age
-    account_age_days = (time.time() - author.created_utc) / (60 * 60 * 24)
-    if account_age_days < MIN_ACCOUNT_AGE_DAYS:
-        logger.info(f"User u/{author.name} is too new to participate. (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
-        return False
-
-    # Check comment karma
-    if author.comment_karma < MIN_COMMENT_KARMA:
-        logger.info(f"User u/{author.name} has insufficient comment karma to participate. (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
-        return False
-
-    # Check recent activity in subreddit
-    comment_count = 0
-    try:
-        for comment in author.comments.new(limit=100):
-            if comment.subreddit.display_name.lower() == subreddit_name.lower():
-                comment_count += 1
-                if comment_count >= MIN_COMMENTS_IN_SUB:
-                    return True
-    except Exception:
-        logger.exception(f"Failed to check recent activity for user u/{author.name}.")
-
-    logger.info(f"User u/{author.name} has insufficient recent activity in r/{subreddit_name}. (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
-    return False
 
 def send_reward_to_winners(winners, reward, raffle_id):
     """
@@ -320,6 +205,27 @@ def send_reward_to_winners(winners, reward, raffle_id):
 
     threading.Thread(target=send_rewards, daemon=True).start()
 
+def should_rate_limit(user):
+    """
+    Checks if the response to an invalid command from a user should be rate-limited.
+
+    Args:
+        user (str): The username to check.
+
+    Returns:
+        bool: True if the user should be rate-limited, False otherwise.
+    """
+    with rate_limit_lock:
+        now = time.time()
+        timestamps = invalid_command_timestamps.get(user, [])
+        # Remove timestamps older than an hour
+        timestamps = [t for t in timestamps if now - t < 3600]
+        if len(timestamps) >= 3:
+            return True
+        timestamps.append(now)
+        invalid_command_timestamps[user] = timestamps
+        return False
+
 def monitor_subreddit(subreddit_name):
     """
     Monitors a single subreddit for comments that trigger the raffle.
@@ -334,7 +240,7 @@ def monitor_subreddit(subreddit_name):
         for comment in subreddit.stream.comments(skip_existing=True):
             process_comment(comment, subreddit_name)
     except Exception:
-        logger.exception(f"Error while monitoring subreddit {subreddit_name}. (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
+        logger.exception(f"Error while monitoring subreddit {subreddit_name}.")
 
 def process_comment(comment, subreddit_name):
     """
@@ -354,14 +260,6 @@ def process_comment(comment, subreddit_name):
         handle_invalid_command(comment, author_name, subreddit_name)
         return
 
-    if should_rate_limit(author_name, is_valid_command=True):
-        logger.info(f"Rate limiting valid command responses for u/{author_name}. (Thread ID: {threading.get_ident()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())})")
-        return
-
-    if not is_valid_participant(comment.author, subreddit_name):
-        logger.info(f"User u/{author_name} is not a valid participant.")
-        return
-
     handle_raffle(comment, num_winners, reward, subreddit_name)
 
 def is_new_comment(comment):
@@ -379,8 +277,8 @@ def is_new_comment(comment):
         if comment.created_utc <= last_processed_timestamp:
             return False
         last_processed_timestamp = max(last_processed_timestamp, comment.created_utc)
-        state["last_processed_timestamp"] = last_processed_timestamp
-        save_state(state)
+        data["last_processed_timestamp"] = last_processed_timestamp
+        save_data(data)
     return True
 
 def get_author_name(author):
@@ -405,7 +303,7 @@ def handle_invalid_command(comment, author_name, subreddit_name):
         subreddit_name (str): The name of the subreddit in which the command was posted.
     """
     if is_authorized_user(author_name, subreddit_name):
-        if not should_rate_limit(author_name, is_valid_command=False):
+        if not should_rate_limit(author_name):
             reply_invalid_command(comment)
         else:
             logger.info(f"Rate limiting invalid command responses for u/{author_name}.")
@@ -434,11 +332,44 @@ def reply_invalid_command(comment):
     """
     try:
         comment.reply(
-            "Invalid command format. Please use `!raffle w [number of winners] r [reward amount]`." + signature
+            "Invalid command format. Please use !raffle w [number of winners] r [reward amount]." + signature
         )
     except Exception:
         logger.exception("Failed to reply to invalid command.")
     logger.warning(f"Invalid command format by authorized user u/{comment.author.name}: {comment.body}")
+
+def get_account_age_days(user):
+    """
+    Returns the account age in days.
+
+    Args:
+        user (praw.models.Redditor): The Redditor object.
+
+    Returns:
+        float: The account age in days.
+    """
+    try:
+        account_age_seconds = time.time() - user.created_utc
+        return account_age_seconds / 86400  # Convert to days
+    except Exception:
+        logger.exception(f"Unable to get account age for u/{user.name}.")
+        return 0
+
+def get_comment_karma(user):
+    """
+    Returns the user's total comment karma.
+
+    Args:
+        user (praw.models.Redditor): The Redditor object.
+
+    Returns:
+        int: The user's comment karma.
+    """
+    try:
+        return user.comment_karma
+    except Exception:
+        logger.exception(f"Unable to get comment karma for u/{user.name}.")
+        return 0
 
 def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     """
@@ -453,33 +384,72 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     try:
         post = trigger_comment.submission
         post.comments.replace_more(limit=None)
-        participants = {
-            c.author.name for c in post.comments.list()
-            if c.author
-            and c.author.name not in EXCLUDED_BOTS
-            and c.author.name != trigger_comment.author.name
-            and c.author.name not in EXCLUDED_USERS
-            and is_valid_participant(c.author, subreddit_name)
-        }
+        participants = set()
+        for c in post.comments.list():
+            if c.author \
+                and c.author.name not in EXCLUDED_BOTS \
+                and c.author.name != trigger_comment.author.name \
+                and c.author.name not in EXCLUDED_USERS:
+
+                user = c.author
+
+                # Check account age
+                account_age_days = get_account_age_days(user)
+                if account_age_days < MIN_ACCOUNT_AGE_DAYS:
+                    logger.info(f"User u/{user.name} excluded due to insufficient account age ({account_age_days:.2f} days).")
+                    continue  # Exclude user if account is too new
+
+                # Check comment karma
+                comment_karma = get_comment_karma(user)
+                if comment_karma < MIN_COMMENT_KARMA:
+                    logger.info(f"User u/{user.name} excluded due to insufficient comment karma ({comment_karma}).")
+                    continue  # Exclude user if comment karma is insufficient
+
+                participants.add(user.name)
 
         if len(participants) < num_winners:
             try:
                 trigger_comment.reply(
-                    f"Not enough participants to select {num_winners} winners." + signature
+                    f"Not enough participants meeting the requirements to select {num_winners} winners." + signature
                 )
             except Exception:
                 logger.exception("Failed to reply about insufficient participants.")
             return
 
         winners = random.sample(participants, num_winners)
-        winners_text = '\n'.join(f"- u/{winner}" for winner in winners)
 
-        response_text = (
-            f"**Raffle completed!**\n\n"
-            f"**Winners:**\n{winners_text}\n\n"
-            f"Thank you all for participating!\n\n"
-            f"{signature}"
+        # Construct the winners text with reward information if applicable
+        if reward > 0:
+            winners_text = '\n'.join(f"- u/{winner} - Reward: {reward} CANNACOIN" for winner in winners)
+        else:
+            winners_text = '\n'.join(f"- u/{winner}" for winner in winners)
+
+        # Build the participation requirements text
+        requirements_text = (
+            "**Participation Requirements:**\n"
+            f"- Minimum account age: {MIN_ACCOUNT_AGE_DAYS} days\n"
+            f"- Minimum comment karma: {MIN_COMMENT_KARMA}\n"
         )
+
+        # Include reward information in the response if applicable
+        if reward > 0:
+            response_text = (
+                f"**Raffle completed!**\n\n"
+                f"**Each winner will receive a reward of {reward} CANNACOIN.**\n\n"
+                f"{requirements_text}\n"
+                f"**Winners:**\n{winners_text}\n\n"
+                f"Thank you all for participating!\n\n"
+                f"{signature}"
+            )
+        else:
+            response_text = (
+                f"**Raffle completed!**\n\n"
+                f"{requirements_text}\n"
+                f"**Winners:**\n{winners_text}\n\n"
+                f"Thank you all for participating!\n\n"
+                f"{signature}"
+            )
+
         try:
             trigger_comment.reply(response_text)
         except Exception:
@@ -528,4 +498,3 @@ def monitor_subreddits():
 
 if __name__ == "__main__":
     monitor_subreddits()
-
