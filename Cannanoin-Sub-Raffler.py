@@ -417,7 +417,7 @@ def monitor_subreddits():
                         del futures[future]
         except KeyboardInterrupt:
             logger.info("Bot stopped by user.")
-        except Exception as e:
+        except Exception:
             logger.exception("Unexpected error in monitoring loop.")
 
 if __name__ == "__main__":
