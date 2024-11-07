@@ -22,6 +22,7 @@ logger.setLevel(logging.INFO)
 logger.addHandler(log_handler)
 
 CONFIG_FILE = "bot_config.json"
+STATE_FILE = "bot_state.json"
 TRIGGER = r'^!raffle(?:\s+w\s+(\d+))?(?:\s+r\s+(\d+))?$'
 RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")
 
@@ -43,6 +44,7 @@ data_lock = threading.Lock()
 # Lock for rate limiting invalid command responses
 rate_limit_lock = threading.Lock()
 invalid_command_timestamps = {}
+valid_command_timestamps = {}
 
 def load_data():
     """
@@ -60,7 +62,10 @@ def load_data():
             "excluded_bots": ["AutoModerator", "timee_bot"],
             "excluded_users": [],
             "whitelisted_users": [],
-            "raffle_count": 0
+            "raffle_count": 0,
+            "min_account_age_days": 30,
+            "min_comment_karma": 50,
+            "min_comments_in_sub": 5
         },
         "processed_posts": [],
         "last_processed_timestamp": 0
@@ -90,7 +95,50 @@ def save_data(data):
         with open(CONFIG_FILE, "w") as f:
             json.dump(data, f, indent=4)
 
+def load_state():
+    """
+    Loads state data from the JSON state file. If the file does not exist, creates default state.
+
+    Returns:
+        dict: State data loaded from the file or default state.
+    """
+    default_state = {
+        "invalid_command_timestamps": {},
+        "valid_command_timestamps": {},
+        "last_processed_timestamp": 0
+    }
+
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r") as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                logger.error("State file is corrupted. Using default state.")
+                return default_state
+    else:
+        logger.warning("State file missing. Using default state.")
+        with open(STATE_FILE, "w") as f:
+            json.dump(default_state, f, indent=4)
+        return default_state
+
+def save_state(state):
+    """
+    Saves state data to the JSON state file with thread-safe access.
+
+    Args:
+        state (dict): The state data to save.
+    """
+    with data_lock:
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f, indent=4)
+
+# Load data and state
 data = load_data()
+state = load_state()
+invalid_command_timestamps = state.get("invalid_command_timestamps", {})
+valid_command_timestamps = state.get("valid_command_timestamps", {})
+last_processed_timestamp = state.get("last_processed_timestamp", 0)
+
 with data_lock:
     PROCESSED_POSTS = set(data["processed_posts"])
     SUBREDDITS = data["config"]["subreddits"]
@@ -100,7 +148,9 @@ with data_lock:
     MAX_WINNERS = data["config"]["max_winners"]
     MAX_REWARD = data["config"]["max_reward"]
     MIN_REWARD = data["config"].get("min_reward", 1000)
-    last_processed_timestamp = data["last_processed_timestamp"]
+    MIN_ACCOUNT_AGE_DAYS = data["config"].get("min_account_age_days", 30)
+    MIN_COMMENT_KARMA = data["config"].get("min_comment_karma", 50)
+    MIN_COMMENTS_IN_SUB = data["config"].get("min_comments_in_sub", 5)
 
 try:
     reddit = login()
@@ -177,6 +227,73 @@ def parse_command(command_text):
 
     return num_winners, reward
 
+def should_rate_limit(user, is_valid_command):
+    """
+    Checks if the response to a command from a user should be rate-limited.
+
+    Args:
+        user (str): The username to check.
+        is_valid_command (bool): True if the command is valid, False otherwise.
+
+    Returns:
+        bool: True if the user should be rate-limited, False otherwise.
+    """
+    timestamp_dict = valid_command_timestamps if is_valid_command else invalid_command_timestamps
+    with rate_limit_lock:
+        now = time.time()
+        timestamps = timestamp_dict.get(user, [])
+        # Remove timestamps older than an hour
+        timestamps = [t for t in timestamps if now - t < 3600]
+        if len(timestamps) >= 3:
+            return True
+        timestamps.append(now)
+        timestamp_dict[user] = timestamps
+        save_state({
+            "invalid_command_timestamps": invalid_command_timestamps,
+            "valid_command_timestamps": valid_command_timestamps,
+            "last_processed_timestamp": last_processed_timestamp
+        })
+        return False
+
+def is_valid_participant(author, subreddit_name):
+    """
+    Checks if the author is a valid participant based on account age, karma, and subreddit activity.
+
+    Args:
+        author (praw.models.Redditor): The author to check.
+        subreddit_name (str): The name of the subreddit.
+
+    Returns:
+        bool: True if the author is a valid participant, False otherwise.
+    """
+    if not author or author.created_utc is None:
+        return False
+
+    # Check account age
+    account_age_days = (time.time() - author.created_utc) / (60 * 60 * 24)
+    if account_age_days < MIN_ACCOUNT_AGE_DAYS:
+        logger.info(f"User u/{author.name} is too new to participate.")
+        return False
+
+    # Check comment karma
+    if author.comment_karma < MIN_COMMENT_KARMA:
+        logger.info(f"User u/{author.name} has insufficient comment karma to participate.")
+        return False
+
+    # Check recent activity in subreddit
+    comment_count = 0
+    try:
+        for comment in author.comments.new(limit=100):
+            if comment.subreddit.display_name.lower() == subreddit_name.lower():
+                comment_count += 1
+                if comment_count >= MIN_COMMENTS_IN_SUB:
+                    return True
+    except Exception:
+        logger.exception(f"Failed to check recent activity for user u/{author.name}.")
+
+    logger.info(f"User u/{author.name} has insufficient recent activity in r/{subreddit_name}.")
+    return False
+
 def send_reward_to_winners(winners, reward, raffle_id):
     """
     Sends a direct message to each winner with the reward amount asynchronously.
@@ -201,27 +318,6 @@ def send_reward_to_winners(winners, reward, raffle_id):
             time.sleep(60)  # Wait 1 minute between each reward distribution
 
     threading.Thread(target=send_rewards, daemon=True).start()
-
-def should_rate_limit(user):
-    """
-    Checks if the response to an invalid command from a user should be rate-limited.
-
-    Args:
-        user (str): The username to check.
-
-    Returns:
-        bool: True if the user should be rate-limited, False otherwise.
-    """
-    with rate_limit_lock:
-        now = time.time()
-        timestamps = invalid_command_timestamps.get(user, [])
-        # Remove timestamps older than an hour
-        timestamps = [t for t in timestamps if now - t < 3600]
-        if len(timestamps) >= 3:
-            return True
-        timestamps.append(now)
-        invalid_command_timestamps[user] = timestamps
-        return False
 
 def monitor_subreddit(subreddit_name):
     """
@@ -257,6 +353,14 @@ def process_comment(comment, subreddit_name):
         handle_invalid_command(comment, author_name, subreddit_name)
         return
 
+    if should_rate_limit(author_name, is_valid_command=True):
+        logger.info(f"Rate limiting valid command responses for u/{author_name}.")
+        return
+
+    if not is_valid_participant(comment.author, subreddit_name):
+        logger.info(f"User u/{author_name} is not a valid participant.")
+        return
+
     handle_raffle(comment, num_winners, reward, subreddit_name)
 
 def is_new_comment(comment):
@@ -274,8 +378,8 @@ def is_new_comment(comment):
         if comment.created_utc <= last_processed_timestamp:
             return False
         last_processed_timestamp = max(last_processed_timestamp, comment.created_utc)
-        data["last_processed_timestamp"] = last_processed_timestamp
-        save_data(data)
+        state["last_processed_timestamp"] = last_processed_timestamp
+        save_state(state)
     return True
 
 def get_author_name(author):
@@ -300,7 +404,7 @@ def handle_invalid_command(comment, author_name, subreddit_name):
         subreddit_name (str): The name of the subreddit in which the command was posted.
     """
     if is_authorized_user(author_name, subreddit_name):
-        if not should_rate_limit(author_name):
+        if not should_rate_limit(author_name, is_valid_command=False):
             reply_invalid_command(comment)
         else:
             logger.info(f"Rate limiting invalid command responses for u/{author_name}.")
@@ -354,6 +458,7 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
             and c.author.name not in EXCLUDED_BOTS
             and c.author.name != trigger_comment.author.name
             and c.author.name not in EXCLUDED_USERS
+            and is_valid_participant(c.author, subreddit_name)
         }
 
         if len(participants) < num_winners:
