@@ -5,6 +5,7 @@
         ],
         "max_winners": 10,
         "max_reward": 10000,
+        "min_reward": 1000,
         "excluded_bots": [
             "bot1",
             "bot2"
