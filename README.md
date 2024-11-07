@@ -85,8 +85,8 @@ The bot uses a JSON configuration file named `bot_config.json`. This file contai
 {
     "config": {
         "subreddits": [
-            "StellarCannacoin",
-            "StellarShroomz"
+            "subreddit_1",
+            "Subreddit_2"
         ],
         "max_winners": 5,
         "max_reward": 10000,
@@ -94,8 +94,8 @@ The bot uses a JSON configuration file named `bot_config.json`. This file contai
         "min_account_age_days": 7,
         "min_comment_karma": 100,
         "excluded_bots": [
-            "AutoModerator",
-            "timee_bot"
+            "bot_1",
+            "bot_2"
         ],
         "excluded_users": [],
         "whitelisted_users": [
