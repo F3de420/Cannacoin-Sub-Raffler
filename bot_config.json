@@ -1,0 +1,27 @@
+{
+    "config": {
+        "subreddits": [
+            "subreddit_1",
+            "subreddit_2"
+        ],
+        "max_winners": 10,
+        "max_reward": 10000,
+        "min_reward": 99,
+        "min_account_age_days": 1,
+        "min_comment_karma": 1,
+        "excluded_bots": [
+            "AutoModerator",
+            "timee_bot",
+            "bot_3"
+        ],
+        "excluded_users": [],
+        "whitelisted_users": [
+            "whitelisted_users_1",
+            "whitelisted_users_2"
+        ],
+        "raffle_count": 0
+    },
+    "processed_posts": [],
+    "last_processed_timestamp": 
+}
+
