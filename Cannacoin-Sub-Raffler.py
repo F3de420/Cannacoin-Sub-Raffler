@@ -124,7 +124,7 @@ def monitor_subreddit(subreddit_name):
 
                     # Extracting `num_winners` and `reward` parameters
                     num_winners = max(1, min(int(match.group(1) or 1), MAX_WINNERS))
-                    reward = max(0, min(int(match.group(2) or 0), MAX_REWARD))
+                    reward = int(match.group(2)) if match.group(2) else 0  # Default to 0 if reward not specified
 
                     handle_raffle(comment, num_winners, reward, subreddit_name)
 
@@ -184,24 +184,23 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     post_author_name = trigger_comment.submission.author.name
     post_id = trigger_comment.submission.id
 
-    # Priority check for excluded users
-    if author_name in EXCLUDED_USERS:
-        logging.warning(f"Excluded user {author_name} attempted to use the bot.")
-        return
-
     # Only add to PROCESSED_POSTS if the raffle completes successfully
     if post_id in PROCESSED_POSTS:
         logging.info(f"Post {post_id} already processed. Ignoring.")
         trigger_comment.reply("A raffle has already been completed in this post." + signature)
         return
 
-    # Authorization check by moderator or whitelist
+    # Exclude users who are in EXCLUDED_USERS even if they are moderators
+    if author_name in EXCLUDED_USERS:
+        logging.warning(f"Excluded user {author_name} attempted to use the bot.")
+        return
+
     if not (is_moderator(reddit, author_name, subreddit_name) or author_name in WHITELISTED_USERS):
         logging.warning(f"User {author_name} attempted unauthorized bot usage.")
         return
 
-    # Limit the reward to be within the allowed range
-    reward = max(min(reward, MAX_REWARD), MIN_REWARD)
+    # Apply reward limits only if reward is specified; otherwise default is 0
+    reward = max(MIN_REWARD, min(reward, MAX_REWARD)) if reward > 0 else 0
     
     post = trigger_comment.submission
     post.comments.replace_more(limit=None)
