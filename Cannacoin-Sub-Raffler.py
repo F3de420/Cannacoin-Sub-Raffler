@@ -184,12 +184,18 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     post_author_name = trigger_comment.submission.author.name
     post_id = trigger_comment.submission.id
 
+    # Priority check for excluded users
+    if author_name in EXCLUDED_USERS:
+        logging.warning(f"Excluded user {author_name} attempted to use the bot.")
+        return
+
     # Only add to PROCESSED_POSTS if the raffle completes successfully
     if post_id in PROCESSED_POSTS:
         logging.info(f"Post {post_id} already processed. Ignoring.")
         trigger_comment.reply("A raffle has already been completed in this post." + signature)
         return
 
+    # Authorization check by moderator or whitelist
     if not (is_moderator(reddit, author_name, subreddit_name) or author_name in WHITELISTED_USERS):
         logging.warning(f"User {author_name} attempted unauthorized bot usage.")
         return
