@@ -15,7 +15,7 @@ log_handler = RotatingFileHandler(
     "bot.log", maxBytes=5*1024*1024, backupCount=5
 )
 log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.INFO)  # Reduced to INFO level to limit verbosity
 logging.getLogger().addHandler(log_handler)
 
 CONFIG_FILE = "bot_config.json"
@@ -117,19 +117,18 @@ def monitor_subreddit(subreddit_name):
                         if author_name in user_last_raffle:
                             last_raffle_time = user_last_raffle[author_name]
                             if current_time - last_raffle_time < 600:
-                                logging.warning(f"Flood control triggered: User {author_name} attempted to start a raffle too soon.")
+                                logging.info(f"Flood control: User {author_name} attempted to start a raffle too soon.")
                                 continue
-                        # Update timestamp for last raffle command
                         user_last_raffle[author_name] = current_time
 
                     # Extracting `num_winners` and `reward` parameters
                     num_winners = max(1, min(int(match.group(1) or 1), MAX_WINNERS))
-                    reward = int(match.group(2)) if match.group(2) else 0  # Default to 0 if reward not specified
+                    reward = int(match.group(2)) if match.group(2) else 0
 
                     handle_raffle(comment, num_winners, reward, subreddit_name)
 
-                # Update `last_processed_timestamp` at a high frequency to reduce frequent I/O
-                if time.time() - last_processed_timestamp > 5:  # Update every 5 seconds
+                # Update timestamp periodically to reduce frequent I/O
+                if time.time() - last_processed_timestamp > 5:
                     last_processed_timestamp = max(last_processed_timestamp, comment.created_utc)
                     data["last_processed_timestamp"] = last_processed_timestamp
                     save_data(data)
@@ -174,7 +173,7 @@ def get_random_numbers(n, min_val, max_val):
         response.raise_for_status()
         return response.json().get("result", {}).get("random", {}).get("data", [])
     except Exception as e:
-        logging.exception("Error in Random.org request. Using local random fallback.")
+        logging.warning("Random.org request failed; using local random fallback.")
         import random
         return random.sample(range(min_val, max_val + 1), n)
 
@@ -184,22 +183,19 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     post_author_name = trigger_comment.submission.author.name
     post_id = trigger_comment.submission.id
 
-    # Only add to PROCESSED_POSTS if the raffle completes successfully
     if post_id in PROCESSED_POSTS:
         logging.info(f"Post {post_id} already processed. Ignoring.")
         trigger_comment.reply("A raffle has already been completed in this post." + signature)
         return
 
-    # Exclude users who are in EXCLUDED_USERS even if they are moderators
     if author_name in EXCLUDED_USERS:
-        logging.warning(f"Excluded user {author_name} attempted to use the bot.")
+        logging.info(f"Excluded user {author_name} attempted to use the bot.")
         return
 
     if not (is_moderator(reddit, author_name, subreddit_name) or author_name in WHITELISTED_USERS):
-        logging.warning(f"User {author_name} attempted unauthorized bot usage.")
+        logging.info(f"Unauthorized raffle attempt by user {author_name}.")
         return
 
-    # Apply reward limits only if reward is specified; otherwise default is 0
     reward = max(MIN_REWARD, min(reward, MAX_REWARD)) if reward > 0 else 0
     
     post = trigger_comment.submission
@@ -219,7 +215,7 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
 
     if len(participants) < num_winners:
         trigger_comment.reply(f"Not enough participants to select {num_winners} winners." + signature)
-        logging.info("Not enough participants for the raffle.")
+        logging.info("Insufficient participants for raffle.")
         return
 
     PROCESSED_POSTS.add(post_id)
@@ -256,7 +252,7 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
         f"{signature}"
     )
     trigger_comment.reply(response_text)
-    logging.info(f"Raffle completed in thread {post_id}. Winners: {winners} with reward: {reward}")
+    logging.info(f"Raffle completed in thread {post_id}. Winners: {winners}")
 
 def backup_config():
     """Backup the configuration file every 6 hours."""
@@ -285,7 +281,7 @@ def log_keep_alive():
     """Log every 30 minutes even if the bot is inactive."""
     while True:
         time.sleep(1800)  # 30 minutes
-        logging.debug("Bot running, no activity in the last 30 minutes.")
+        logging.info("Bot is active.")
 
 if __name__ == "__main__":
     logging.info("Starting subreddit monitoring...")
