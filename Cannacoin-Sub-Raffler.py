@@ -11,16 +11,14 @@ import itertools
 from logging.handlers import RotatingFileHandler
 
 # Logging configuration with rotating file handler
-log_handler = RotatingFileHandler(
-    "bot.log", maxBytes=5*1024*1024, backupCount=5
-)
+log_handler = RotatingFileHandler("bot.log", maxBytes=5*1024*1024, backupCount=5)
 log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
 logging.getLogger().setLevel(logging.INFO)  # Reduced to INFO level to limit verbosity
 logging.getLogger().addHandler(log_handler)
 
 CONFIG_FILE = "bot_config.json"
 BACKUP_DIR = "backup"
-TRIGGER = r'!raffle(?:\s+w\s*(\d+))?(?:\s+r\s*(\d+))?'
+TRIGGER = r'!raffle(?:\s+w\s*(\d+))?(?:\s+r\s*([\d;]+))?'
 RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")
 
 signature = (
@@ -38,6 +36,9 @@ data_lock = threading.Lock()
 raffle_lock = threading.Lock()
 user_last_raffle = {}
 
+# Constants for reward validation
+MAX_REWARDS_LIST_LENGTH = 10  # Limit the maximum number of individual rewards
+
 # Load and save the configuration file
 def load_data():
     """Loads data from the JSON file, creating defaults if file is missing."""
@@ -52,7 +53,8 @@ def load_data():
             "max_reward": 1000,
             "min_reward": 10,
             "min_account_age_days": 1,
-            "min_comment_karma": 10
+            "min_comment_karma": 10,
+            "deusexmachina": "admin_username"
         },
         "processed_posts": [],
         "last_processed_timestamp": 0
@@ -76,6 +78,36 @@ def save_data(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+def send_dm(user, subject, body, retries=3, delay=5):
+    """Sends a direct message to a specified user with retries for increased robustness."""
+    full_subject = f"[Raffle Bot Alert] {subject}"
+    attempt = 0
+    while attempt < retries:
+        try:
+            reddit.redditor(user).message(full_subject, body)
+            logging.info(f"DM sent to {user}: {subject}")
+            return  # Exit after successful send
+        except Exception as e:
+            attempt += 1
+            logging.warning(f"Attempt {attempt} to send DM to {user} failed: {e}")
+            time.sleep(delay)  # Wait before retrying
+    logging.error(f"Failed to send DM to {user} after {retries} attempts.")
+
+def connect_to_reddit(retries=5, delay=10):
+    """Attempts to log in to Reddit with retries for resiliency."""
+    attempt = 0
+    while attempt < retries:
+        try:
+            reddit = login()
+            logging.info("Logged in to Reddit successfully.")
+            return reddit
+        except Exception as e:
+            attempt += 1
+            logging.warning(f"Attempt {attempt} to log in to Reddit failed: {e}")
+            time.sleep(delay)
+    logging.error("Failed to log in to Reddit after multiple attempts. Exiting.")
+    exit(1)  # Exit if all attempts fail
+
 # Initialize data and configurations
 data = load_data()
 PROCESSED_POSTS = data["processed_posts"]
@@ -88,69 +120,69 @@ MAX_REWARD = data["config"].get("max_reward", 1000)
 MIN_REWARD = data["config"].get("min_reward", 10)
 MIN_ACCOUNT_AGE = data["config"].get("min_account_age_days", 1) * 24 * 60 * 60  # Days to seconds
 MIN_COMMENT_KARMA = data["config"].get("min_comment_karma", 10)
+DEUSEX_USERNAME = data["config"]["deusexmachina"]
 last_processed_timestamp = data["last_processed_timestamp"]
 
-try:
-    reddit = login()
-except Exception as e:
-    logging.error(f"Failed to log in to Reddit: {e}")
-    exit(1)
+reddit = connect_to_reddit()
 
-def monitor_subreddit(subreddit_name):
-    """Monitors a single subreddit for comments that trigger the raffle."""
-    subreddit = reddit.subreddit(subreddit_name)
-    logging.info(f"Monitoring subreddit: {subreddit_name}")
+def monitor_subreddit(subreddit_name, delay=10):
+    """Monitors a single subreddit for comments that trigger the raffle with retry mechanism."""
     global last_processed_timestamp
-    try:
-        for comment in subreddit.stream.comments(skip_existing=True):
-            with data_lock:  # Locks access to synchronize shared data
-                if comment.created_utc <= last_processed_timestamp:
-                    continue
+    while True:
+        try:
+            subreddit = reddit.subreddit(subreddit_name)
+            logging.info(f"Monitoring subreddit: {subreddit_name}")
+            for comment in subreddit.stream.comments(skip_existing=True):
+                with data_lock:
+                    if comment.created_utc <= last_processed_timestamp:
+                        continue
 
-                # Check for trigger command in comment
-                if match := re.search(TRIGGER, comment.body):
-                    author_name = comment.author.name
-                    current_time = time.time()
-
-                    # Flood control: 600 seconds (10 minutes) between commands from the same user
-                    with raffle_lock:
-                        if author_name in user_last_raffle:
-                            last_raffle_time = user_last_raffle[author_name]
-                            if current_time - last_raffle_time < 600:
-                                logging.info(f"Flood control: User {author_name} attempted to start a raffle too soon.")
-                                continue
-                        user_last_raffle[author_name] = current_time
-
-                    # Extracting `num_winners` and `reward` parameters
-                    num_winners = max(1, min(int(match.group(1) or 1), MAX_WINNERS))
-                    reward = int(match.group(2)) if match.group(2) else 0
-
-                    handle_raffle(comment, num_winners, reward, subreddit_name)
-
-                # Update timestamp periodically to reduce frequent I/O
+                    # Process the comment if it matches the trigger pattern
+                    if match := re.search(TRIGGER, comment.body):
+                        handle_comment(comment, match)
+                
+                # Update timestamp periodically
                 if time.time() - last_processed_timestamp > 5:
                     last_processed_timestamp = max(last_processed_timestamp, comment.created_utc)
                     data["last_processed_timestamp"] = last_processed_timestamp
                     save_data(data)
-    except Exception as e:
-        logging.error(f"Error while monitoring subreddit {subreddit_name}: {e}")
+        
+        except Exception as e:
+            logging.warning(f"Error in monitoring {subreddit_name}: {e}. Retrying in {delay} seconds...")
+            time.sleep(delay)  # Wait before retrying
 
-def monitor_subreddits():
-    """Starts a thread for each subreddit to monitor them concurrently."""
-    logging.info("Starting subreddit monitoring...")
-    spinner = itertools.cycle(['|', '/', '-', '\\'])
+def handle_comment(comment, match):
+    """Handles the comment processing and validation based on trigger pattern."""
+    author_name = comment.author.name
+    current_time = time.time()
 
-    # Limiting the ThreadPoolExecutor to a maximum of 4 threads
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        while True:
-            try:
-                executor.map(monitor_subreddit, SUBREDDITS)
-                time.sleep(1)
-                print(f"Bot running... {next(spinner)}", end="\r")
-                data["processed_posts"] = list(PROCESSED_POSTS)
-                save_data(data)
-            except Exception as e:
-                logging.error(f"Unexpected error in monitoring loop: {e}")
+    # Flood control
+    with raffle_lock:
+        if author_name in user_last_raffle:
+            last_raffle_time = user_last_raffle[author_name]
+            if current_time - last_raffle_time < 600:
+                logging.info(f"Flood control: User {author_name} attempted to start a raffle too soon.")
+                send_dm(DEUSEX_USERNAME, "Flood Control Triggered", f"User {author_name} attempted to start a raffle within flood control interval.")
+                return
+        user_last_raffle[author_name] = current_time
+
+    # Extract `num_winners` and `reward` parameters
+    num_winners = max(1, min(int(match.group(1) or 1), MAX_WINNERS))
+    reward = match.group(2)
+    try:
+        reward_list = [max(MIN_REWARD, min(int(r), MAX_REWARD)) for r in reward.split(';')] if reward else [0]
+    except ValueError:
+        logging.error("Invalid reward format provided in command.")
+        send_dm(DEUSEX_USERNAME, "Invalid Reward Format",
+                "User provided an invalid reward format in command. Please use only integers separated by semicolons.")
+        return
+
+    # Limit and sort rewards
+    if len(reward_list) > MAX_REWARDS_LIST_LENGTH:
+        reward_list = reward_list[:MAX_REWARDS_LIST_LENGTH]
+    reward_list.sort(reverse=True)
+
+    handle_raffle(comment, num_winners, reward_list, comment.subreddit.display_name)
 
 def get_random_numbers(n, min_val, max_val):
     """Fetches unique random numbers from Random.org, with a fallback to local random."""
@@ -177,7 +209,7 @@ def get_random_numbers(n, min_val, max_val):
         import random
         return random.sample(range(min_val, max_val + 1), n)
 
-def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
+def handle_raffle(trigger_comment, num_winners, reward_list, subreddit_name):
     """Handles the raffle process, excluding post and trigger authors."""
     author_name = trigger_comment.author.name
     post_author_name = trigger_comment.submission.author.name
@@ -185,19 +217,22 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
 
     if post_id in PROCESSED_POSTS:
         logging.info(f"Post {post_id} already processed. Ignoring.")
-        trigger_comment.reply("A raffle has already been completed in this post." + signature)
+        send_dm(DEUSEX_USERNAME, "Duplicate Raffle Attempt",
+                f"User {author_name} attempted to start a raffle in a processed post: {post_id}")
         return
 
     if author_name in EXCLUDED_USERS:
         logging.info(f"Excluded user {author_name} attempted to use the bot.")
+        send_dm(DEUSEX_USERNAME, "Excluded User Raffle Attempt", 
+                f"Excluded user {author_name} attempted to start a raffle.")
         return
 
     if not (is_moderator(reddit, author_name, subreddit_name) or author_name in WHITELISTED_USERS):
         logging.info(f"Unauthorized raffle attempt by user {author_name}.")
+        send_dm(DEUSEX_USERNAME, "Unauthorized Raffle Attempt",
+                f"Unauthorized user {author_name} attempted to start a raffle in {subreddit_name}.")
         return
 
-    reward = max(MIN_REWARD, min(reward, MAX_REWARD)) if reward > 0 else 0
-    
     post = trigger_comment.submission
     post.comments.replace_more(limit=None)
     current_time = time.time()
@@ -214,7 +249,8 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     }
 
     if len(participants) < num_winners:
-        trigger_comment.reply(f"Not enough participants to select {num_winners} winners." + signature)
+        send_dm(DEUSEX_USERNAME, "Insufficient Participants",
+                f"Raffle started by {author_name} in {post_id} had insufficient participants.")
         logging.info("Insufficient participants for raffle.")
         return
 
@@ -225,7 +261,16 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
     winner_indices = get_random_numbers(num_winners, 0, len(participants) - 1)
     participants_list = list(participants)
     winners = [participants_list[i] for i in winner_indices]
-    winners_text = '\n'.join(f"- u/{winner}" + (f" {reward} CANNACOIN" if reward > 0 else "") for winner in winners)
+    
+    # Calculate rewards for each winner based on their position
+    total_prize = 0
+    winners_text = []
+    for i, winner in enumerate(winners):
+        prize = reward_list[i] if i < len(reward_list) else reward_list[-1]  # Assign prize based on position
+        total_prize += prize
+        winners_text.append(f"{i+1}. u/{winner} {prize} CANNACOIN")
+    winners_text = '\n'.join(winners_text)
+
     participants_text = '\n'.join(f"- {participant}" for participant in participants_list)
 
     data["config"]["raffle_count"] += 1
@@ -237,12 +282,16 @@ def handle_raffle(trigger_comment, num_winners, reward, subreddit_name):
         f"- Comment Karma: {MIN_COMMENT_KARMA}\n"
         f"- Account Age (days): {int(MIN_ACCOUNT_AGE // (24 * 60 * 60))}"
     )
-    prize_text = f"\nEach winner receives {reward} CANNACOIN." if reward > 0 else ""
     
+    # Additional prize information if there are different rewards for each position
+    prize_text = f"\nTotal prize pool: {total_prize} CANNACOIN.\n\n"
+    if len(set(reward_list)) > 1:
+        prize_text += "\nPrize by ranking:\n" + '\n'.join(f"{i+1}. {reward} CANNACOIN" for i, reward in enumerate(reward_list))
+
     manual_reward_notice = (
         "\n\nNote: Rewards are distributed manually. "
         "Winners, please reply to this comment to arrange your reward."
-    ) if reward > 0 else ""
+    ) if total_prize > 0 else ""
 
     response_text = (
         f"**Raffle completed!**{prize_text}{eligibility_text}\n\n"
@@ -287,4 +336,16 @@ if __name__ == "__main__":
     logging.info("Starting subreddit monitoring...")
     threading.Thread(target=backup_config, daemon=True).start()
     threading.Thread(target=log_keep_alive, daemon=True).start()
-    monitor_subreddits()
+
+    # Start monitoring threads for each subreddit
+    for subreddit in SUBREDDITS:
+        threading.Thread(target=monitor_subreddit, args=(subreddit,), daemon=True).start()
+    
+    # Spinner animation in the main loop
+    spinner = itertools.cycle(['|', '/', '-', '\\'])
+    try:
+        while True:
+            print(f"Bot running... {next(spinner)}", end="\r")
+            time.sleep(1)  # Update every second
+    except KeyboardInterrupt:
+        print("Bot stopped by user.")
