@@ -19,7 +19,8 @@
             "whitelisted_users_1",
             "whitelisted_users_2"
         ],
-        "raffle_count": 0
+        "raffle_count": 0,
+        "deusexmachina": "admin_username"
     },
     "processed_posts": [],
     "last_processed_timestamp": 
