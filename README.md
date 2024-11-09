@@ -3,102 +3,165 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![Python](https://img.shields.io/badge/language-Python-blue.svg)
 
-A Reddit bot for managing raffles in specified subreddits, designed to help moderators organize giveaways effectively by selecting winners based on custom criteria.
+Welcome to the **Cannacoin Subreddit Raffle Bot**! 🎉 This bot is designed to organize raffles and manage giveaways directly within designated subreddits. With a wide range of customizable settings, this bot simplifies rewarding community members with ease and transparency.
+
+------
 
 ## Features
 
-- **Automated Raffles**: Monitors specified subreddits and detects raffle commands (`!raffle`) in comments.
-- **Customizable Rules**: Configurable settings for maximum winners, prize limits, account age, and comment karma requirements.
-- **Anti-Flood Control**: Limits raffle triggers to prevent spam and unauthorized access.
-- **Manual Prize Distribution**: Posts results and prompts winners to reply for reward arrangement.
-- **Data Logging and Backup**: Rotating logs with periodic configuration backups and keep-alive messages for reliable monitoring.
+- **Multi-Subreddit Support**: Monitors multiple subreddits for raffle commands.
+- **Configurable Prizes**: Customizable rewards based on ranking with flexible control over prize distribution.
+- **Spam and Flood Control**: Automatically limits the frequency of raffle commands and applies user eligibility criteria.
+- **User Notifications**: Directs important messages to designated moderators or administrators via DM.
+- **Backup & Logs**: Automatic backups and rotating logs for reliability and stability.
+- **Random.org API Integration**: For truly random winner selection (with a fallback to local random selection).
 
-## Setup
+## Installation
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/username/Cannacoin-Sub-Raffler.git
-   cd Cannacoin-Sub-Raffler
-
-1. **Install Requirements**
-
-   - Install dependencies for the Reddit API using `praw`.
+1. **Clone the repository**:
 
    ```
+   bashCopia codicegit clone https://github.com/username/cannacoin-raffle-bot.git
+   cd cannacoin-raffle-bot
+   ```
+
+2. **Set up your environment variables**:
+
+   - Create a `.env` file or export the variables in your environment:
+
+   ```
+   plaintextCopia codiceAPP_ID=your_app_id
+   APP_SECRET=your_app_secret
+   APP_REFRESH=your_refresh_token
+   REDDIT_USERNAME=your_bot_username
+   REDDIT_PASSWORD=your_bot_password
+   RANDOM_ORG_API_KEY=your_random_org_key
+   ```
+
+3. **Install dependencies**:
+
+   ```
+   bash
+   
+   
+   Copia codice
    pip install -r requirements.txt
    ```
 
-2. **Configure Environment Variables**
+4. **Configure the bot**: Modify `bot_config.json` for your subreddit settings, user permissions, and prize limits.
 
-   - Set up environment variables for Reddit API access in your environment:
-
-     ```
-     export APP_ID=your_app_id
-     export APP_SECRET=your_app_secret
-     export APP_REFRESH=your_refresh_token
-     export REDDIT_USERNAME=your_bot_username
-     export REDDIT_PASSWORD=your_bot_password
-     export RANDOM_ORG_API_KEY=your_random_org_api_key
-     ```
-
-3. **Edit Configuration (bot_config.json)**
-
-   - Modify 
-
-     ```
-     bot_config.json
-     ```
-
-      to specify:
-
-     - **Subreddits** to monitor
-     - **User and bot exclusions**
-     - **Raffle limits** like max winners and reward range
-
-4. **Run the Bot**
+5. **Run the bot**:
 
    ```
+   bash
+   
+   
+   Copia codice
    python Cannacoin-Sub-Raffler.py
    ```
 
-## Command Usage
+------
 
-- Start a Raffle
+## Configuration
 
-  : Users with the required permissions can start a raffle by commenting:
+**bot_config.json** is where you customize the bot's settings. Here’s a quick overview of key parameters:
 
-  ```
-  !raffle w <num_winners> r <reward_amount>
-  ```
+- `subreddits`: List of subreddits the bot should monitor.
+- `max_winners`: Maximum number of winners per raffle.
+- `max_reward` / `min_reward`: Limits for rewards distributed per raffle.
+- `min_account_age_days` / `min_comment_karma`: Minimum requirements for users to participate.
+- `excluded_bots`, `excluded_users`, `whitelisted_users`: Lists for filtering users and bots.
+- `deusexmachina`: Administrator username for receiving notifications.
 
-  - `<num_winners>` (optional): Number of winners, limited by `max_winners`.
-  - `<reward_amount>` (optional): Reward per winner, must be within `min_reward` and `max_reward`.
+------
 
-### Examples of Commands
+## Usage
 
-- `!raffle`
-  - Starts a raffle with 1 winner and no reward.
-- `!raffle w 3`
-  - Starts a raffle with 3 winners and no reward. The `max_winners` setting still applies.
-- `!raffle r 500`
-  - Starts a raffle with 1 winner, each receiving a reward of 500 (within the `min_reward` and `max_reward` limits).
-- `!raffle w 2 r 1000`
-  - Starts a raffle with 2 winners, each receiving a reward of 1000. Both `max_winners` and reward limits apply.
+To launch a raffle in a monitored subreddit, post a comment using the `!raffle` command with optional parameters for winners and rewards. The bot will manage everything from selecting winners to notifying participants.
 
-## Configuration File (`bot_config.json`)
+**Basic Raffle Command:**
 
-The `bot_config.json` file contains settings for:
+- `!raffle w 3 r 10000;5000;1000`: Start a raffle for 3 winners with prizes of 10000, 5000, and 1000 for each place, respectively.
 
-- Subreddit list (`subreddits`)
-- User and bot exclusions (`excluded_bots`, `excluded_users`)
-- Winner count and prize limits (`max_winners`, `max_reward`, `min_reward`)
-- Minimum account age and karma for eligibility (`min_account_age_days`, `min_comment_karma`)
+For more detailed usage and behavior explanations, see the [User Guide](#user-guide) below.
 
-## Logging and Backup
+------
 
-- **Logging**: Tracks bot actions and raffle activities with rotating logs (`bot.log`).
-- **Backup**: Configuration file is backed up every 6 hours with a maximum of 10 backups.
+## Backup and Logging
+
+The bot creates a backup every 6 hours, with old backups automatically removed to keep storage manageable. Logs are saved in `bot.log` with a rotating file handler to prevent excessive log growth. These logs provide insight into the bot's activity and errors, aiding in smooth operation.
+
+------
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+This bot is available under the MIT License.
+
+------
+
+# User Guide
+
+- [How to Start a Raffle](#how-to-start-a-raffle)
+- [Command Parameters](#command-parameters)
+- [Bot Behavior in Specific Situations](#bot-behavior-in-specific-situations)
+- [Troubleshooting](#troubleshooting)
+
+------
+
+### How to Start a Raffle
+
+To initiate a raffle, simply comment with the command `!raffle` followed by optional parameters to customize the raffle. Here's a quick overview:
+
+#### Syntax:
+
+```
+plaintext
+
+
+Copia codice
+!raffle w <number_of_winners> r <reward1;reward2;reward3...>
+```
+
+#### Example:
+
+- `!raffle w 3 r 10000;5000;1000`: Launch a raffle with 3 winners. The first winner receives 10000, the second 5000, and the third 1000.
+
+#### Default Behavior:
+
+- If no parameters are specified, the bot will default to 1 winner with no rewards.
+
+------
+
+### Command Parameters
+
+| Parameter        | Description                                                  |
+| ---------------- | ------------------------------------------------------------ |
+| `w <number>`     | Defines the number of winners (default is 1).                |
+| `r <reward;...>` | Specifies rewards per place, separated by `;`. Additional winners receive the last reward specified. |
+
+**Note**: The bot enforces limits on the number of winners and reward amounts as specified in `bot_config.json`.
+
+------
+
+### Bot Behavior in Specific Situations
+
+1. **Flood Control**:
+   - Users can trigger a raffle every 10 minutes to prevent spam. Any excess commands are ignored, and the administrator receives a notification.
+2. **Eligibility Check**:
+   - The bot checks account age, karma, and other requirements before a user can participate. Ineligible participants are excluded automatically.
+3. **Error and Feedback**:
+   - Invalid commands or configurations prompt the bot to notify the designated administrator directly, ensuring smooth operations and troubleshooting.
+4. **Multiple Subreddit Support**:
+   - The bot can monitor multiple subreddits concurrently and will respond to valid raffle commands in each.
+
+------
+
+### Troubleshooting
+
+If the bot stops or isn’t responding as expected:
+
+1. **Check Logs**: Refer to `bot.log` for any errors or warnings.
+2. **Verify Configuration**: Ensure `bot_config.json` is correctly set up, and environment variables are properly defined.
+3. **Restart the Bot**: Stop the bot and relaunch it by running `python Cannacoin-Sub-Raffler.py`.
+
+For further help, refer to the [GitHub Issues](https://github.com/username/cannacoin-raffle-bot/issues) page to report bugs or request assistance.
