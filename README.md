@@ -21,7 +21,7 @@ Welcome to the **Cannacoin Subreddit Raffle Bot**! 🎉 This bot is designed to 
 1. **Clone the repository**:
 
    ```
-   bashCopia codicegit clone https://github.com/username/cannacoin-raffle-bot.git
+   git clone https://github.com/username/cannacoin-raffle-bot.git
    cd cannacoin-raffle-bot
    ```
 
@@ -30,7 +30,7 @@ Welcome to the **Cannacoin Subreddit Raffle Bot**! 🎉 This bot is designed to 
    - Create a `.env` file or export the variables in your environment:
 
    ```
-   plaintextCopia codiceAPP_ID=your_app_id
+   APP_ID=your_app_id
    APP_SECRET=your_app_secret
    APP_REFRESH=your_refresh_token
    REDDIT_USERNAME=your_bot_username
@@ -41,22 +41,14 @@ Welcome to the **Cannacoin Subreddit Raffle Bot**! 🎉 This bot is designed to 
 3. **Install dependencies**:
 
    ```
-   bash
-   
-   
-   Copia codice
    pip install -r requirements.txt
    ```
-
+   
 4. **Configure the bot**: Modify `bot_config.json` for your subreddit settings, user permissions, and prize limits.
 
 5. **Run the bot**:
 
    ```
-   bash
-   
-   
-   Copia codice
    python Cannacoin-Sub-Raffler.py
    ```
 
@@ -115,10 +107,6 @@ To initiate a raffle, simply comment with the command `!raffle` followed by opti
 #### Syntax:
 
 ```
-plaintext
-
-
-Copia codice
 !raffle w <number_of_winners> r <reward1;reward2;reward3...>
 ```
 
