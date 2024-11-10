@@ -271,7 +271,8 @@ def handle_raffle(trigger_comment, num_winners, reward_list, subreddit_name):
         winners_text.append(f"{i+1}. u/{winner} {prize} CANNACOIN")
     winners_text = '\n'.join(winners_text)
 
-    participants_text = '\n'.join(f"- {participant}" for participant in participants_list)
+    # Format participants as "utente1 | utente2 | utente3"
+    participants_text = ' | '.join(participants_list)
 
     data["config"]["raffle_count"] += 1
     raffle_id = data["config"]["raffle_count"]
@@ -282,11 +283,11 @@ def handle_raffle(trigger_comment, num_winners, reward_list, subreddit_name):
         f"- Comment Karma: {MIN_COMMENT_KARMA}\n"
         f"- Account Age (days): {int(MIN_ACCOUNT_AGE // (24 * 60 * 60))}"
     )
-    
-    # Additional prize information if there are different rewards for each position
-    prize_text = f"\nTotal prize pool: {total_prize} CANNACOIN.\n\n"
-    if len(set(reward_list)) > 1:
-        prize_text += "\nPrize by ranking:\n" + '\n'.join(f"{i+1}. {reward} CANNACOIN" for i, reward in enumerate(reward_list))
+
+    # Generate the expanded reward list to ensure each winner's prize is shown correctly
+    expanded_rewards = reward_list + [reward_list[-1]] * (num_winners - len(reward_list))
+    prize_text = f"\nTotal prize pool: {total_prize} CANNACOIN.\n\nPrize by ranking:\n"
+    prize_text += '\n'.join(f"{i+1}. {reward} CANNACOIN" for i, reward in enumerate(expanded_rewards))
 
     manual_reward_notice = (
         "\n\nNote: Rewards are distributed manually. "
