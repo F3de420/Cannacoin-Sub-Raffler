@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 RANDOM_ORG_API_KEY = os.getenv("RANDOM_ORG_API_KEY")
 
 def select_winners_with_random_org(participants, num_winners):
-    """Selects winners using Random.org API."""
+    """Seleziona i vincitori utilizzando l'API di Random.org."""
     try:
         api_url = 'https://api.random.org/json-rpc/4/invoke'
         headers = {'Content-Type': 'application/json'}
@@ -31,12 +31,12 @@ def select_winners_with_random_org(participants, num_winners):
         random_data = response.json()
 
         if 'error' in random_data:
-            logger.error(f"Error from Random.org: {random_data['error']}")
+            logger.error(f"Errore da Random.org: {random_data['error']}")
             return None
 
         indices = random_data['result']['random']['data']
         winners = [participants[i] for i in indices]
         return winners
     except Exception as e:
-        logger.error(f"Failed to obtain random numbers from Random.org: {e}")
+        logger.error(f"Impossibile ottenere numeri casuali da Random.org: {e}")
         return None
