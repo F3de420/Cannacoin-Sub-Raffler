@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 CONFIG_FILE = "bot_config.json"
 
 def load_config():
-    """Loads configuration data from the JSON file."""
-    logger.debug("Loading configuration data...")
+    """Carica i dati di configurazione dal file JSON."""
+    logger.debug("Caricamento dei dati di configurazione...")
     default_data = {
         "config": {
             "subreddits": ["MainSubreddit"],
@@ -33,17 +33,17 @@ def load_config():
         try:
             with open(CONFIG_FILE, "r") as f:
                 data = json.load(f)
-            logger.debug(f"Configuration file {CONFIG_FILE} loaded successfully.")
+            logger.debug(f"File di configurazione {CONFIG_FILE} caricato con successo.")
         except json.JSONDecodeError as e:
-            logger.error(f"Error decoding JSON from {CONFIG_FILE}: {e}")
+            logger.error(f"Errore nel decodificare il JSON da {CONFIG_FILE}: {e}")
             data = default_data
             save_config(data)
     else:
-        logger.warning("Configuration file missing. Creating a default configuration.")
+        logger.warning("File di configurazione mancante. Creazione di una configurazione di default.")
         data = default_data
         save_config(data)
 
-    # Initialize last_processed_timestamps for new subreddits
+    # Inizializza last_processed_timestamps per nuovi subreddit
     for subreddit in data["config"]["subreddits"]:
         if subreddit not in data.get("last_processed_timestamps", {}):
             data["last_processed_timestamps"][subreddit] = 0
@@ -52,17 +52,17 @@ def load_config():
     return data
 
 def save_config(data):
-    """Saves the configuration data back to the JSON file."""
-    logger.debug("Saving configuration data...")
-    # Prepare a version of data suitable for saving
+    """Salva i dati di configurazione nel file JSON."""
+    logger.debug("Salvataggio dei dati di configurazione...")
+    # Prepara una versione dei dati adatta per il salvataggio
     data_to_save = {
         "config": data["config"],
-        "processed_posts": list(data["processed_posts"]),  # Convert set to list for JSON compatibility
+        "processed_posts": list(data["processed_posts"]),  # Converti il set in lista per compatibilità JSON
         "last_processed_timestamps": data["last_processed_timestamps"]
     }
     try:
         with open(CONFIG_FILE, "w") as f:
             json.dump(data_to_save, f, indent=4)
-        logger.debug(f"Configuration saved to {CONFIG_FILE}.")
+        logger.debug(f"Configurazione salvata in {CONFIG_FILE}.")
     except Exception as e:
-        logger.error(f"Failed to save configuration: {e}")
+        logger.error(f"Impossibile salvare la configurazione: {e}")
