@@ -5,7 +5,7 @@ import time
 import itertools
 
 def spinner_animation(stop_event):
-    """Displays a spinner animation in the console."""
+    """Mostra un'animazione dello spinner nella console."""
     spinner = itertools.cycle(['|', '/', '-', '\\'])
     while not stop_event.is_set():
         sys.stdout.write('\r' + next(spinner) + ' Bot is running...')
