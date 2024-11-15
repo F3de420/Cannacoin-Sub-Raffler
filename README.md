@@ -10,7 +10,6 @@ A Reddit bot designed to manage and automate raffles in Cannacoin-related subred
 - Excludes specified bots and users from participating.
 - Uses Random.org API for unbiased winner selection.
 - Uploads participant lists to Pastebin and shares the raw link.
-- Provides a spinner animation in the console to indicate active operation.
 - Logs all activities and errors to a rotating log file.
 
 ## Requirements
