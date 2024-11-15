@@ -7,7 +7,6 @@ import random
 from config.config import save_config
 from utils.pastebin_helper import upload_to_pastebin
 from utils.random_org_helper import select_winners_with_random_org
-from utils.authentication import connect_to_reddit
 
 logger = logging.getLogger(__name__)
 
@@ -23,95 +22,95 @@ signature = (
     "[Shroomz Discord](https://discord.gg/PXkKFKwZVA)"
 )
 
-def handle_comment(comment, match, data):
-    """Handles the comment processing and validation based on trigger pattern."""
+def handle_comment(comment, match, data, reddit_instance):
+    """Gestisce l'elaborazione del commento e la validazione in base al pattern del trigger."""
     author_name = comment.author.name
     subreddit_name = comment.subreddit.display_name
 
-    # Check if the comment has already been processed
+    # Controlla se il commento è già stato elaborato
     if comment.id in data["processed_posts"]:
-        logger.debug(f"Comment {comment.id} already processed. Skipping.")
+        logger.debug(f"Commento {comment.id} già elaborato. Salto.")
         return
 
-    # Extract parameters from the trigger
+    # Estrae i parametri dal trigger
     num_winners = int(match.group(1)) if match.group(1) else 1
     rewards = [int(r) for r in match.group(2).split(";")] if match.group(2) else [0]
 
-    # Ensure that the number of rewards matches the number of winners
+    # Assicura che il numero di premi corrisponda al numero di vincitori
     assigned_rewards = [
         rewards[i] if i < len(rewards) else rewards[-1] for i in range(num_winners)
     ]
 
-    # Calculate the total reward
+    # Calcola il premio totale
     total_reward = sum(assigned_rewards) if any(assigned_rewards) else 0
 
-    # Get configurations
+    # Ottiene le configurazioni
     EXCLUDED_BOTS = set(data["config"]["excluded_bots"])
     EXCLUDED_USERS = set(data["config"]["excluded_users"])
     MAX_WINNERS = data["config"]["max_winners"]
 
-    # Validate the number of winners
+    # Valida il numero di vincitori
     if num_winners > MAX_WINNERS:
-        logger.warning(f"Number of winners exceeds maximum allowed for raffle by u/{author_name}")
+        logger.warning(f"Numero di vincitori supera il massimo consentito per il raffle di u/{author_name}")
         try:
             comment.reply(
-                f"**Error:** Number of winners exceeds the maximum allowed ({MAX_WINNERS})."
+                f"**Errore:** Il numero di vincitori supera il massimo consentito ({MAX_WINNERS})."
             )
         except Exception as e:
-            logger.error(f"Failed to post error response: {e}")
+            logger.error(f"Impossibile pubblicare la risposta di errore: {e}")
         return
 
-    # Get the list of participants
+    # Ottiene la lista dei partecipanti
     participants = [
         c.author.name for c in comment.submission.comments.list()
         if c.author and
         c.author.name not in EXCLUDED_BOTS and
         c.author.name not in EXCLUDED_USERS and
-        c.author.name != author_name  # Exclude the raffle initiator
+        c.author.name != author_name  # Esclude chi ha iniziato il raffle
     ]
 
-    # Remove duplicates
+    # Rimuove i duplicati
     participants = list(set(participants))
 
-    # Verify if there are enough participants
+    # Verifica se ci sono abbastanza partecipanti
     if len(participants) < num_winners:
-        logger.warning(f"Not enough participants for raffle by u/{author_name}")
+        logger.warning(f"Non ci sono abbastanza partecipanti per il raffle di u/{author_name}")
         try:
             comment.reply(
-                f"**Error:** Not enough participants to complete the raffle.\n\n"
-                f"**Participants Needed:** {num_winners}, but only {len(participants)} were found."
+                f"**Errore:** Non ci sono abbastanza partecipanti per completare il raffle.\n\n"
+                f"**Partecipanti necessari:** {num_winners}, ma ne sono stati trovati solo {len(participants)}."
             )
         except Exception as e:
-            logger.error(f"Failed to post error response: {e}")
+            logger.error(f"Impossibile pubblicare la risposta di errore: {e}")
         return
 
-    # Select winners using Random.org
+    # Seleziona i vincitori utilizzando Random.org
     winners = select_winners_with_random_org(participants, num_winners)
     if not winners:
-        # Fallback using the random module
-        logger.warning("Random.org not available, using the random module as fallback.")
+        # Fallback utilizzando il modulo random
+        logger.warning("Random.org non disponibile, utilizzo il modulo random come fallback.")
         winners = random.sample(participants, num_winners)
 
-    # Construct the winners message
+    # Costruisce il messaggio dei vincitori
     if total_reward == 0:
-        # Case when rewards are zero
+        # Caso in cui i premi sono zero
         results_message = "\n".join([
             f"{i+1}. u/{winner}" for i, winner in enumerate(winners)
         ])
-        final_note = ""  # No final note
+        final_note = ""  # Nessuna nota finale
     else:
         results_message = "\n".join([
             f"{i+1}. u/{winner} - {assigned_rewards[i]} CANNACOIN" for i, winner in enumerate(winners)
         ])
         final_note = (
-            "\n\n**Note:** All prizes will be distributed manually. "
-            "Winners, please reply to this comment with your Cannacoin wallet address to claim your rewards. "
-            "Thank you for participating!"
+            "\n\n**Nota:** Tutti i premi saranno distribuiti manualmente. "
+            "Vincitori, per favore rispondete a questo commento con il vostro indirizzo wallet Cannacoin per ricevere i premi. "
+            "Grazie per aver partecipato!"
         )
 
-    logger.info(f"Winners selected: {winners}")
+    logger.info(f"Vincitori selezionati: {winners}")
 
-    # Upload participants to Pastebin
+    # Carica i partecipanti su Pastebin
     pastebin_link = None
     try:
         participants_formatted = ' | '.join(participants)
@@ -119,19 +118,19 @@ def handle_comment(comment, match, data):
             participants_formatted,
             title=f"Raffle Participants: {comment.submission.id}"
         )
-        # Modify the link to point to the raw version
+        # Modifica il link per puntare alla versione raw
         if 'pastebin.com/' in pastebin_link:
             pastebin_key = pastebin_link.split('/')[-1]
             pastebin_raw_link = f"https://pastebin.com/raw/{pastebin_key}"
         else:
             pastebin_raw_link = pastebin_link
-        logger.info(f"Participants uploaded to Pastebin: {pastebin_raw_link}")
+        logger.info(f"Partecipanti caricati su Pastebin: {pastebin_raw_link}")
     except Exception as e:
-        logger.error(f"Failed to upload participants to Pastebin: {e}")
-        pastebin_raw_link = "Error uploading participants list to Pastebin."
+        logger.error(f"Impossibile caricare i partecipanti su Pastebin: {e}")
+        pastebin_raw_link = "Errore nel caricare la lista dei partecipanti su Pastebin."
 
-    # Construct the bot's response
-    response = f"**Raffle Completed!**\n\n"
+    # Costruisce la risposta del bot
+    response = f"**Raffle Completato!**\n\n"
     response += f"**Total Participants:** {len(participants)}\n"
     response += f"[Full List of Eligible Participants]({pastebin_raw_link})\n\n"
     if total_reward > 0:
@@ -142,13 +141,13 @@ def handle_comment(comment, match, data):
     response += final_note + "\n\n"
     response += signature
 
-    # Reply to the comment
+    # Risponde al commento
     try:
         comment.reply(response)
-        logger.info(f"Posted results successfully in thread: {comment.submission.id}")
+        logger.info(f"Risultati pubblicati con successo nel thread: {comment.submission.id}")
     except Exception as e:
-        logger.error(f"Failed to post results: {e}")
+        logger.error(f"Impossibile pubblicare i risultati: {e}")
 
-    # Add the comment to processed posts and save data
+    # Aggiunge il commento ai post elaborati e salva i dati
     data["processed_posts"].add(comment.id)
     save_config(data)
