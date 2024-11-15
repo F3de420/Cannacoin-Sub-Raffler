@@ -69,42 +69,7 @@ pip install praw requests
 
 3. **Configure the Bot**
 
-   Create a `bot_config.json` file in the project directory with the following content:
-
-   ```
-   {
-       "config": {
-           "subreddits": [
-               "Subreddit",
-               "AnotherSubreddit"
-           ],
-           "max_winners": 10,
-           "max_reward": 2000000,
-           "min_reward": 99,
-           "min_account_age_days": 10,
-           "min_comment_karma": 15,
-           "excluded_bots": [
-               "AutoModerator",
-               "timee_bot",
-               "Canna_Tips",
-               "Shroomz_Tips",
-               "f3de_crypto_addicted",
-               "canna_raffle_bot"
-           ],
-           "excluded_users": [],
-           "whitelisted_users": [],
-           "raffle_count": 0,
-           "deusexmachina": "admin username"
-       },
-       "processed_posts": [
-       	"processed raffle"
-       ],
-       "last_processed_timestamps": {
-           "Subreddit": 0,
-           "AnotherSubreddit": 0
-       }
-   }
-   ```
+   Edit a `bot_config.json` file in the project directory-
 
    Adjust the configuration parameters according to your needs:
 
